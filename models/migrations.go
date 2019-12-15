@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/rafaelespinoza/standardfile/config"
+	"github.com/rafaelespinoza/standardfile/db"
 	m "github.com/remind101/migrate"
-	"github.com/tectiv3/standardfile/db"
 )
 
 // Migrate performs migration

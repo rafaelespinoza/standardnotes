@@ -11,9 +11,9 @@ import (
 
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/kisielk/sqlstruct"
+	"github.com/rafaelespinoza/standardfile/db"
 	"github.com/rafaelespinoza/standardfile/logger"
 	uuid "github.com/satori/go.uuid"
-	"github.com/tectiv3/standardfile/db"
 )
 
 // User is the user type

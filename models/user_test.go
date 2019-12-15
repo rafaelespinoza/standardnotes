@@ -3,16 +3,16 @@ package models_test
 import (
 	"testing"
 
-	sf "github.com/tectiv3/standardfile"
-	"github.com/tectiv3/standardfile/db"
+	"github.com/rafaelespinoza/standardfile/db"
+	"github.com/rafaelespinoza/standardfile/models"
 )
 
 var (
-	login = sf.User{
+	login = models.User{
 		Email:    "user2@local",
 		Password: "3cb5561daa49bd5b4438ad214a6f9a6d9b056a2c0b9a91991420ad9d658b8fac",
 	}
-	register = sf.User{
+	register = models.User{
 		Email:     "user2@local",
 		Password:  "3cb5561daa49bd5b4438ad214a6f9a6d9b056a2c0b9a91991420ad9d658b8fac",
 		PwCost:    101000,

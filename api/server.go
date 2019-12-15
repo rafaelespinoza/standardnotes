@@ -3,17 +3,16 @@ package api
 import (
 	"net"
 
-	"github.com/go-playground/pure"
-	mw "github.com/go-playground/pure/_examples/middleware/logging-recovery"
-	"github.com/rafaelespinoza/standardfile/config"
-
 	// "github.com/go-playground/pure/middleware"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
 
-	"github.com/tectiv3/standardfile/db"
+	"github.com/go-playground/pure"
+	mw "github.com/go-playground/pure/_examples/middleware/logging-recovery"
+	"github.com/rafaelespinoza/standardfile/config"
+	"github.com/rafaelespinoza/standardfile/db"
 )
 
 var _Work chan bool

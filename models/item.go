@@ -13,8 +13,8 @@ import (
 	"github.com/rafaelespinoza/standardfile/logger"
 
 	// "github.com/kisielk/sqlstruct"
+	"github.com/rafaelespinoza/standardfile/db"
 	uuid "github.com/satori/go.uuid"
-	"github.com/tectiv3/standardfile/db"
 )
 
 // Item - is an item type
