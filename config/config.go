@@ -7,6 +7,7 @@ import (
 
 type Config struct {
 	DB         string `json:"db"`
+	Host       string `json:"host"`
 	Port       int    `json:"port"`
 	Socket     string `json:"socket"`
 	NoReg      bool   `json:"noreg"`

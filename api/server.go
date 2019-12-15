@@ -3,7 +3,6 @@ package api
 import (
 	"net"
 
-	// "github.com/go-playground/pure/middleware"
 	"log"
 	"net/http"
 	"os"

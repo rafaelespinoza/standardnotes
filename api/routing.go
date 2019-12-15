@@ -8,14 +8,11 @@ import (
 	"strings"
 
 	jwt "github.com/dgrijalva/jwt-go"
-	"github.com/go-playground/pure"
 	"github.com/rafaelespinoza/standardfile/config"
 	"github.com/rafaelespinoza/standardfile/encryption"
 	"github.com/rafaelespinoza/standardfile/logger"
 	"github.com/rafaelespinoza/standardfile/models"
 )
-
-type data map[string]interface{}
 
 type sfError struct {
 	Message string `json:"message"`
@@ -24,7 +21,33 @@ type sfError struct {
 
 func showError(w http.ResponseWriter, err error, code int) {
 	log.Println(err)
-	pure.JSON(w, code, data{"error": sfError{err.Error(), code}})
+	body, perr := json.Marshal(
+		sfError{
+			err.Error(),
+			code,
+		},
+	)
+	if perr != nil {
+		panic(perr)
+	}
+	w.WriteHeader(code)
+	fmt.Fprintf(w, `{"error": %s}`, string(body))
+}
+
+func writeJSONResponse(w http.ResponseWriter, status int, data interface{}) error {
+	body, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	w.WriteHeader(status)
+	w.Write(body)
+	return nil
+}
+
+func readJSONRequest(r *http.Request, dst interface{}) error {
+	// TODO: use buffering
+	return json.NewDecoder(r.Body).Decode(dst)
 }
 
 func authenticateUser(r *http.Request) (models.User, error) {
@@ -75,7 +98,7 @@ func ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	np := models.NewPassword{}
-	if err := pure.Decode(r, true, 104857600, &np); err != nil {
+	if err := readJSONRequest(r, &np); err != nil {
 		showError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
@@ -100,7 +123,11 @@ func ChangePassword(w http.ResponseWriter, r *http.Request) {
 		showError(w, err, http.StatusUnauthorized)
 		return
 	}
-	pure.JSON(w, http.StatusAccepted, data{"token": token, "user": user.ToJSON()})
+	writeJSONResponse(
+		w,
+		http.StatusAccepted,
+		map[string]interface{}{"token": token, "user": user.ToJSON()},
+	)
 }
 
 //UpdateUser - updates user params
@@ -111,7 +138,7 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := models.Params{}
-	if err := pure.Decode(r, true, 104857600, &p); err != nil {
+	if err := readJSONRequest(r, &p); err != nil {
 		showError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
@@ -121,13 +148,13 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 		showError(w, err, http.StatusInternalServerError)
 		return
 	}
-	pure.JSON(w, http.StatusAccepted, data{})
+	writeJSONResponse(w, http.StatusAccepted, nil)
 }
 
 //Registration - is the registration handler
 func Registration(w http.ResponseWriter, r *http.Request) {
 	var user = models.NewUser()
-	if err := pure.Decode(r, true, 104857600, &user); err != nil {
+	if err := readJSONRequest(r, &user); err != nil {
 		showError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
@@ -137,13 +164,17 @@ func Registration(w http.ResponseWriter, r *http.Request) {
 		showError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
-	pure.JSON(w, http.StatusCreated, data{"token": token, "user": user.ToJSON()})
+	writeJSONResponse(
+		w,
+		http.StatusCreated,
+		map[string]interface{}{"token": token, "user": user.ToJSON()},
+	)
 }
 
 //Login - is the login handler
 func Login(w http.ResponseWriter, r *http.Request) {
 	var user = models.NewUser()
-	if err := pure.Decode(r, true, 104857600, &user); err != nil {
+	if err := readJSONRequest(r, &user); err != nil {
 		showError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
@@ -153,7 +184,11 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		showError(w, err, http.StatusUnauthorized)
 		return
 	}
-	pure.JSON(w, http.StatusAccepted, data{"token": token, "user": user.ToJSON()})
+	writeJSONResponse(
+		w,
+		http.StatusAccepted,
+		map[string]interface{}{"token": token, "user": user.ToJSON()},
+	)
 }
 
 //GetParams - is the get auth parameters handler
@@ -172,7 +207,7 @@ func GetParams(w http.ResponseWriter, r *http.Request) {
 	}
 	content, _ := json.MarshalIndent(params, "", "  ")
 	logger.Log("Response:", string(content))
-	pure.JSON(w, http.StatusOK, params)
+	writeJSONResponse(w, http.StatusOK, params)
 }
 
 // SyncItems is the items sync handler.
@@ -183,7 +218,7 @@ func SyncItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request models.SyncRequest
-	if err := pure.Decode(r, true, 104857600, &request); err != nil {
+	if err := readJSONRequest(r, &request); err != nil {
 		showError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
@@ -195,7 +230,7 @@ func SyncItems(w http.ResponseWriter, r *http.Request) {
 	}
 	content, _ := json.MarshalIndent(response, "", "  ")
 	logger.Log("Response:", string(content))
-	pure.JSON(w, http.StatusAccepted, response)
+	writeJSONResponse(w, http.StatusAccepted, response)
 }
 
 // BackupItems export items.
