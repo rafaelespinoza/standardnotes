@@ -1,4 +1,4 @@
-package main
+package api
 
 import (
 	"encoding/json"
@@ -8,18 +8,15 @@ import (
 	"strings"
 
 	jwt "github.com/dgrijalva/jwt-go"
-	httpext "github.com/go-playground/pkg/net/http"
 	"github.com/go-playground/pure"
+	"github.com/rafaelespinoza/standardfile/config"
+	"github.com/rafaelespinoza/standardfile/logger"
+	"github.com/rafaelespinoza/standardfile/models"
 )
 
 type data map[string]interface{}
 
-// Log writes in log if debug flag is set
-func Log(v ...interface{}) { // can't easily pass in `cfg` here
-	if _Config.Debug { // TODO: use init function to grab this
-		log.Println(v...)
-	}
-}
+var _Config config.Config // TODO: fix
 
 type sfError struct {
 	Message string `json:"message"`
@@ -31,27 +28,27 @@ func showError(w http.ResponseWriter, err error, code int) {
 	pure.JSON(w, code, data{"error": sfError{err.Error(), code}})
 }
 
-func authenticateUser(r *http.Request) (User, error) {
-	var user = NewUser()
+func authenticateUser(r *http.Request) (models.User, error) {
+	var user = models.NewUser()
 
 	authHeaderParts := strings.Split(r.Header.Get("Authorization"), " ")
 	if len(authHeaderParts) != 2 || strings.ToLower(authHeaderParts[0]) != "bearer" {
 		return user, fmt.Errorf("Missing authorization header")
 	}
 
-	token, err := jwt.ParseWithClaims(authHeaderParts[1], &UserClaims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(authHeaderParts[1], &models.UserClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
 		}
-		return _SigningKey, nil
+		return models.SigningKey, nil
 	})
 
 	if err != nil {
 		return user, err
 	}
 
-	if claims, ok := token.Claims.(*UserClaims); ok && token.Valid {
-		Log("Token is valid, claims: ", claims)
+	if claims, ok := token.Claims.(*models.UserClaims); ok && token.Valid {
+		logger.Log("Token is valid, claims: ", claims)
 
 		if ok := user.LoadByUUID(claims.UUID); !ok {
 			return user, fmt.Errorf("Unknown user")
@@ -65,21 +62,21 @@ func authenticateUser(r *http.Request) (User, error) {
 	return user, fmt.Errorf("Invalid token")
 }
 
-//Dashboard - is the root handler
+// Dashboard - is the root handler
 func Dashboard(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Dashboard. Server version: " + _Version))
+	w.Write([]byte("Dashboard. Server version: " + config.MiscData.Version))
 }
 
-//ChangePassword - is the change password handler
+// ChangePassword - is the change password handler
 func ChangePassword(w http.ResponseWriter, r *http.Request) {
 	user, err := authenticateUser(r)
 	if err != nil {
 		showError(w, err, http.StatusUnauthorized)
 		return
 	}
-	np := NewPassword{}
-	if err := pure.Decode(r, httpext.QueryParams, 104857600, &np); err != nil {
+	np := models.NewPassword{}
+	if err := pure.Decode(r, true, 104857600, &np); err != nil {
 		showError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
@@ -114,12 +111,12 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 		showError(w, err, http.StatusUnauthorized)
 		return
 	}
-	p := Params{}
-	if err := pure.Decode(r, httpext.QueryParams, 104857600, &p); err != nil {
+	p := models.Params{}
+	if err := pure.Decode(r, true, 104857600, &p); err != nil {
 		showError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
-	Log("Request:", p)
+	logger.Log("Request:", p)
 
 	if err := user.UpdateParams(p); err != nil {
 		showError(w, err, http.StatusInternalServerError)
@@ -130,12 +127,12 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 
 //Registration - is the registration handler
 func Registration(w http.ResponseWriter, r *http.Request) {
-	var user = NewUser()
-	if err := pure.Decode(r, httpext.QueryParams, 104857600, &user); err != nil {
+	var user = models.NewUser()
+	if err := pure.Decode(r, true, 104857600, &user); err != nil {
 		showError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
-	Log("Request:", user)
+	logger.Log("Request:", user)
 	token, err := user.Register()
 	if err != nil {
 		showError(w, err, http.StatusUnprocessableEntity)
@@ -146,12 +143,12 @@ func Registration(w http.ResponseWriter, r *http.Request) {
 
 //Login - is the login handler
 func Login(w http.ResponseWriter, r *http.Request) {
-	var user = NewUser()
-	if err := pure.Decode(r, httpext.QueryParams, 104857600, &user); err != nil {
+	var user = models.NewUser()
+	if err := pure.Decode(r, true, 104857600, &user); err != nil {
 		showError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
-	Log("Request:", user)
+	logger.Log("Request:", user)
 	token, err := user.Login(user.Email, user.Password)
 	if err != nil {
 		showError(w, err, http.StatusUnauthorized)
@@ -162,9 +159,9 @@ func Login(w http.ResponseWriter, r *http.Request) {
 
 //GetParams - is the get auth parameters handler
 func GetParams(w http.ResponseWriter, r *http.Request) {
-	user := NewUser()
+	user := models.NewUser()
 	email := r.FormValue("email")
-	Log("Request:", string(email))
+	logger.Log("Request:", string(email))
 	if email == "" {
 		showError(w, fmt.Errorf("Empty email"), http.StatusUnauthorized)
 		return
@@ -175,7 +172,7 @@ func GetParams(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	content, _ := json.MarshalIndent(params, "", "  ")
-	Log("Response:", string(content))
+	logger.Log("Response:", string(content))
 	pure.JSON(w, http.StatusOK, params)
 }
 
@@ -186,19 +183,19 @@ func SyncItems(w http.ResponseWriter, r *http.Request) {
 		showError(w, err, http.StatusUnauthorized)
 		return
 	}
-	var request SyncRequest
-	if err := pure.Decode(r, httpext.QueryParams, 104857600, &request); err != nil {
+	var request models.SyncRequest
+	if err := pure.Decode(r, true, 104857600, &request); err != nil {
 		showError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
-	Log("Request:", request)
+	logger.Log("Request:", request)
 	response, err := user.SyncItems(request)
 	if err != nil {
 		showError(w, err, http.StatusInternalServerError)
 		return
 	}
 	content, _ := json.MarshalIndent(response, "", "  ")
-	Log("Response:", string(content))
+	logger.Log("Response:", string(content))
 	pure.JSON(w, http.StatusAccepted, response)
 }
 

@@ -1,16 +1,18 @@
-package main
+// TODO: move elsewhere, figure out getSalt thing
+package models
 
 import (
 	"database/sql"
 	"log"
 	"time"
 
+	"github.com/rafaelespinoza/standardfile/config"
 	m "github.com/remind101/migrate"
 	"github.com/tectiv3/standardfile/db"
 )
 
-//Migrate performs migration
-func Migrate(cfg config) {
+// Migrate performs migration
+func Migrate(cfg config.Config) {
 	db.Init(cfg.DB)
 	migrations := getMigrations()
 	err := m.Exec(db.DB(), m.Up, migrations...)

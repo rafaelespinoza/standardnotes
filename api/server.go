@@ -1,10 +1,11 @@
-package main
+package api
 
 import (
 	"net"
 
 	"github.com/go-playground/pure"
 	mw "github.com/go-playground/pure/_examples/middleware/logging-recovery"
+	"github.com/rafaelespinoza/standardfile/config"
 
 	// "github.com/go-playground/pure/middleware"
 	"log"
@@ -15,10 +16,20 @@ import (
 	"github.com/tectiv3/standardfile/db"
 )
 
-func Worker(cfg config) {
+var _Work chan bool
+
+func init() {
+	_Work = make(chan bool)
+}
+
+func Shutdown() {
+	close(_Work)
+}
+
+func Worker(cfg config.Config) {
 	db.Init(cfg.DB)
-	log.Println("Started StandardFile Server", _Version)
-	log.Println("Loaded config:", _LoadedConfig)
+	log.Println("Started StandardFile Server", config.MiscData.Version)
+	log.Println("Loaded config:", config.MiscData.LoadedConfig)
 
 	if cfg.Debug {
 		log.Println("Debug on")
@@ -53,7 +64,7 @@ func Worker(cfg config) {
 	os.Exit(0)
 }
 
-func listen(r *pure.Mux, cfg config) {
+func listen(r *pure.Mux, cfg config.Config) {
 	if len(cfg.Socket) != 0 {
 		os.Remove(cfg.Socket)
 		unixListener, err := net.Listen("unix", cfg.Socket)
@@ -85,7 +96,7 @@ func cors(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func removeSock(cfg config) {
+func removeSock(cfg config.Config) {
 	if len(cfg.Socket) != 0 {
 		os.Remove(cfg.Socket)
 	}

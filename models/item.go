@@ -1,4 +1,4 @@
-package main
+package models
 
 import (
 	"encoding/base64"
@@ -9,9 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deckarep/golang-set"
+	mapset "github.com/deckarep/golang-set"
+	"github.com/rafaelespinoza/standardfile/logger"
+
 	// "github.com/kisielk/sqlstruct"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 	"github.com/tectiv3/standardfile/db"
 )
 
@@ -105,17 +107,18 @@ func (i *Item) save() error {
 
 func (i *Item) create() error {
 	if i.UUID == "" {
-		i.UUID = uuid.Must(uuid.NewV4()).String()
+		id := uuid.NewV4()
+		i.UUID = uuid.Must(id, nil).String()
 	}
 	i.CreatedAt = time.Now()
 	i.UpdatedAt = time.Now()
-	Log("Create:", i.UUID)
+	logger.Log("Create:", i.UUID)
 	return db.Query("INSERT INTO `items` (`uuid`, `user_uuid`, content,  content_type, enc_item_key, auth_hash, deleted, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?)", i.UUID, i.UserUUID, i.Content, i.ContentType, i.EncItemKey, i.AuthHash, i.Deleted, i.CreatedAt, i.UpdatedAt)
 }
 
 func (i *Item) update() error {
 	i.UpdatedAt = time.Now()
-	Log("Update:", i.UUID)
+	logger.Log("Update:", i.UUID)
 	return db.Query("UPDATE `items` SET `content`=?, `enc_item_key`=?, `auth_hash`=?, `deleted`=?, `updated_at`=? WHERE `uuid`=? AND `user_uuid`=?", i.Content, i.EncItemKey, i.AuthHash, i.Deleted, i.UpdatedAt, i.UUID, i.UserUUID)
 }
 
@@ -132,11 +135,12 @@ func (i *Item) delete() error {
 }
 
 func (i Item) copy() (Item, error) {
-	i.UUID = uuid.Must(uuid.NewV4()).String()
+	out := uuid.NewV4()
+	i.UUID = uuid.Must(out, nil).String()
 	i.UpdatedAt = time.Now()
 	err := i.create()
 	if err != nil {
-		Log(err)
+		logger.Log(err)
 		return Item{}, err
 	}
 	return i, nil
@@ -150,10 +154,10 @@ func (i Item) Exists() bool {
 	uuid, err := db.SelectFirst("SELECT `uuid` FROM `items` WHERE `uuid`=?", i.UUID)
 
 	if err != nil {
-		Log(err)
+		logger.Log(err)
 		return false
 	}
-	Log("Exists:", uuid)
+	logger.Log("Exists:", uuid)
 	return uuid != ""
 }
 
@@ -162,7 +166,7 @@ func (i *Item) LoadByUUID(uuid string) bool {
 	_, err := db.SelectStruct("SELECT * FROM `items` WHERE `uuid`=?", i, uuid)
 
 	if err != nil {
-		Log(err)
+		logger.Log(err)
 		return false
 	}
 
@@ -178,13 +182,13 @@ func GetTokenFromTime(date time.Time) string {
 func GetTimeFromToken(token string) time.Time {
 	decoded, err := base64.URLEncoding.DecodeString(token)
 	if err != nil {
-		Log(err)
+		logger.Log(err)
 		return time.Now()
 	}
 	parts := strings.Split(string(decoded), ":")
 	str, err := strconv.ParseUint(parts[1], 10, 64)
 	if err != nil {
-		Log(err)
+		logger.Log(err)
 		return time.Now()
 	}
 	return time.Time(time.Unix(0, int64(str)))
@@ -206,16 +210,16 @@ func (u User) SyncItems(request SyncRequest) (SyncResponse, error) {
 	}
 	var err error
 	var cursorTime time.Time
-	Log("Get items")
+	logger.Log("Get items")
 	response.Retrieved, cursorTime, err = u.getItems(request)
-	// Log("Retrieved items:", response.Retrieved)
+	// logger.Log("Retrieved items:", response.Retrieved)
 	if err != nil {
 		return response, err
 	}
 	if !cursorTime.IsZero() {
 		response.CursorToken = GetTokenFromTime(cursorTime)
 	}
-	Log("Save incoming items", request)
+	logger.Log("Save incoming items", request)
 	response.Saved, response.Unsaved, err = request.Items.save(u.UUID)
 	if err != nil {
 		return response, err
@@ -223,15 +227,15 @@ func (u User) SyncItems(request SyncRequest) (SyncResponse, error) {
 	if len(response.Saved) > 0 {
 		response.SyncToken = GetTokenFromTime(response.Saved[0].UpdatedAt)
 		// Check for conflicts
-		Log("Conflicts check")
+		logger.Log("Conflicts check")
 		response.Saved.checkForConflicts(&response.Retrieved)
 	}
 	return response, nil
 }
 
 func (items Items) checkForConflicts(existing *Items) {
-	Log("Saved len:", len(items))
-	Log("Retrieved len:", len(*existing))
+	logger.Log("Saved len:", len(items))
+	logger.Log("Retrieved len:", len(*existing))
 	saved := mapset.NewSet()
 	for _, item := range items {
 		saved.Add(item.UUID)
@@ -241,11 +245,11 @@ func (items Items) checkForConflicts(existing *Items) {
 		retrieved.Add(item.UUID)
 	}
 	conflicts := saved.Intersect(retrieved)
-	Log("Conflicts", conflicts)
+	logger.Log("Conflicts", conflicts)
 	// saved items take precedence, retrieved items are duplicated with a new uuid
 	for _, uuid := range conflicts.ToSlice() {
 		// if changes are greater than minConflictInterval seconds apart, create conflicted copy, otherwise discard conflicted
-		Log(uuid)
+		logger.Log(uuid)
 		savedCopy := items.find(uuid.(string))
 		retrievedCopy := existing.find(uuid.(string))
 
@@ -253,7 +257,7 @@ func (items Items) checkForConflicts(existing *Items) {
 			log.Printf("Creating conflicted copy of %v\n", uuid)
 			dupe, err := retrievedCopy.copy()
 			if err != nil {
-				Log(err)
+				logger.Log(err)
 			} else {
 				*existing = append(*existing, dupe)
 			}
@@ -264,7 +268,7 @@ func (items Items) checkForConflicts(existing *Items) {
 
 func (i Item) isConflictedWith(copy Item) bool {
 	diff := math.Abs(float64(i.UpdatedAt.Unix() - copy.UpdatedAt.Unix()))
-	Log("Conflict diff, min interval:", diff, minConflictInterval)
+	logger.Log("Conflict diff, min interval:", diff, minConflictInterval)
 	return diff > minConflictInterval
 }
 
@@ -286,11 +290,11 @@ func (items Items) save(userUUID string) (Items, []unsaved, error) {
 		}
 		if err != nil {
 			unsavedItems = append(unsavedItems, unsaved{item, err})
-			Log("Unsaved:", item)
+			logger.Log("Unsaved:", item)
 		} else {
 			item.load() //reloading item info from DB
 			savedItems = append(savedItems, item)
-			Log("Saved:", item)
+			logger.Log("Saved:", item)
 		}
 	}
 	return savedItems, unsavedItems, nil
@@ -302,13 +306,13 @@ func (i *Item) load() bool {
 
 func (u User) getItems(request SyncRequest) (items Items, cursorTime time.Time, err error) {
 	if request.CursorToken != "" {
-		Log("loadItemsFromDate")
+		logger.Log("loadItemsFromDate")
 		items, err = u.loadItemsFromDate(GetTimeFromToken(request.CursorToken))
 	} else if request.SyncToken != "" {
-		Log("loadItemsOlder")
+		logger.Log("loadItemsOlder")
 		items, err = u.loadItemsOlder(GetTimeFromToken(request.SyncToken))
 	} else {
-		Log("loadItems")
+		logger.Log("loadItems")
 		items, err = u.loadItems(request.Limit)
 		if len(items) > 0 {
 			cursorTime = items[len(items)-1].UpdatedAt

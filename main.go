@@ -9,6 +9,9 @@ import (
 	"strconv"
 	"syscall"
 
+	"github.com/rafaelespinoza/standardfile/api"
+	"github.com/rafaelespinoza/standardfile/config"
+	"github.com/rafaelespinoza/standardfile/models"
 	"github.com/sevlyar/go-daemon"
 )
 
@@ -20,7 +23,6 @@ type Args struct {
 }
 
 var (
-	_Work         chan bool
 	_LoadedConfig = "using flags"
 	_Args         = Args{}
 	// _Version string will be set by linker
@@ -30,7 +32,6 @@ var (
 )
 
 func init() {
-	_Work = make(chan bool)
 	flag.BoolVar(&_Args.signal, "stop", false, `shutdown server`)
 	flag.BoolVar(&_Args.migrate, "migrate", false, `perform DB migrations`)
 	flag.BoolVar(&_Args.ver, "v", false, `show version`)
@@ -40,42 +41,44 @@ func init() {
 
 func main() {
 	flag.Parse()
-	if err := initConf(_Args.cfgPath, &_Config); err != nil {
+	if err := config.InitConf(_Args.cfgPath); err != nil {
 		log.Println(err)
 		os.Exit(1)
 	}
 
+	conf := config.Conf
+
 	if _Args.ver {
 		socket := "no"
-		if len(_Config.Socket) > 0 {
-			socket = _Config.Socket
+		if len(conf.Socket) > 0 {
+			socket = conf.Socket
 		}
 		fmt.Println(`        Version:           ` + _Version + `
         Built:             ` + _BuildTime + `
         Go Version:        ` + runtime.Version() + `
         OS/Arch:           ` + runtime.GOOS + "/" + runtime.GOARCH + `
         Loaded Config:     ` + _LoadedConfig + `
-        No Registrations:  ` + strconv.FormatBool(_Config.NoReg) + `
-        CORS Enabled:      ` + strconv.FormatBool(_Config.UseCORS) + `
-        Run in Foreground: ` + strconv.FormatBool(_Config.Foreground) + `
-        Webserver Port:    ` + strconv.Itoa(_Config.Port) + `
+        No Registrations:  ` + strconv.FormatBool(conf.NoReg) + `
+        CORS Enabled:      ` + strconv.FormatBool(conf.UseCORS) + `
+        Run in Foreground: ` + strconv.FormatBool(conf.Foreground) + `
+        Webserver Port:    ` + strconv.Itoa(conf.Port) + `
         Socket:            ` + socket + `
-        DB Path:           ` + _Config.DB + `
-        Debug:             ` + strconv.FormatBool(_Config.Debug))
+        DB Path:           ` + conf.DB + `
+        Debug:             ` + strconv.FormatBool(conf.Debug))
 		return
 	}
 
 	if _Args.migrate {
-		Migrate(_Config)
+		models.Migrate(conf)
 		return
 	}
 
-	if _Config.Port == 0 {
-		_Config.Port = 8888
+	if conf.Port == 0 {
+		conf.Port = 8888
 	}
 
-	if _Config.Foreground {
-		Worker(_Config)
+	if conf.Foreground {
+		api.Worker(conf)
 		return
 	}
 
@@ -110,7 +113,7 @@ func main() {
 	}
 	defer cntxt.Release()
 
-	go Worker(_Config)
+	go api.Worker(conf)
 
 	if err := daemon.ServeSignals(); err != nil {
 		log.Println("Error:", err)
@@ -118,6 +121,6 @@ func main() {
 }
 
 func termHandler(sig os.Signal) error {
-	close(_Work)
+	api.Shutdown()
 	return daemon.ErrStop
 }

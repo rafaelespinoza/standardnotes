@@ -1,11 +1,11 @@
-package main
+package config
 
 import (
 	"encoding/json"
 	"io/ioutil"
 )
 
-type config struct {
+type Config struct {
 	DB         string `json:"db"`
 	Port       int    `json:"port"`
 	Socket     string `json:"socket"`
@@ -15,7 +15,7 @@ type config struct {
 	UseCORS    bool   `json:"cors"`
 }
 
-var _Config = config{
+var Conf = Config{
 	DB:         "sf.db",
 	Port:       8888,
 	Debug:      false,
@@ -24,13 +24,18 @@ var _Config = config{
 	UseCORS:    false,
 }
 
-func initConf(path string, conf *config) (err error) {
+func InitConf(path string) (err error) {
 	if data, ierr := ioutil.ReadFile(path); ierr != nil {
 		err = ierr
 		return
-	} else if ierr = json.Unmarshal(data, conf); ierr != nil {
+	} else if ierr = json.Unmarshal(data, &Conf); ierr != nil {
 		err = ierr
 		return
 	}
 	return
 }
+
+var MiscData = struct {
+	Version      string
+	LoadedConfig string
+}{}

@@ -1,9 +1,10 @@
-package main_test
+package models_test
 
 import (
+	"testing"
+
 	sf "github.com/tectiv3/standardfile"
 	"github.com/tectiv3/standardfile/db"
-	"testing"
 )
 
 var (

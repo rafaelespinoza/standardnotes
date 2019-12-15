@@ -1,4 +1,4 @@
-package main
+package models
 
 import (
 	"crypto/sha1"
@@ -11,11 +11,12 @@ import (
 
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/kisielk/sqlstruct"
+	"github.com/rafaelespinoza/standardfile/logger"
 	uuid "github.com/satori/go.uuid"
 	"github.com/tectiv3/standardfile/db"
 )
 
-//User is the user type
+// User is the user type
 type User struct {
 	UUID      string    `json:"uuid"`
 	Email     string    `json:"email"`
@@ -31,7 +32,7 @@ type User struct {
 	UpdatedAt time.Time `json:"updated_at"  sql:"updated_at"`
 }
 
-//Params is params type
+// Params is params type
 type Params struct {
 	PwFunc    string `json:"pw_func"     sql:"pw_func"`
 	PwAlg     string `json:"pw_alg"      sql:"pw_alg"`
@@ -41,29 +42,29 @@ type Params struct {
 	Version   string `json:"version"`
 }
 
-//NewPassword - incomming json password change
+// NewPassword - incomming json password change
 type NewPassword struct {
 	User
 	CurrentPassword string `json:"current_password"`
 	NewPassword     string `json:"new_password"`
 }
 
-//UserClaims - jwt claims
+// UserClaims - jwt claims
 type UserClaims struct {
 	UUID   string `json:"uuid"`
 	PwHash string `json:"pw_hash"`
 	jwt.StandardClaims
 }
 
-// _SigningKey - export to routing
-var _SigningKey = []byte{}
+// SigningKey - export to routing
+var SigningKey = []byte{}
 
 func init() {
 	key := os.Getenv("SECRET_KEY_BASE")
 	if key == "" {
 		key = "qA6irmDikU6RkCM4V0cJiUJEROuCsqTa1esexI4aWedSv405v8lw4g1KB1nQVsSdCrcyRlKFdws4XPlsArWwv9y5Xr5Jtkb11w1NxKZabOUa7mxjeENuCs31Y1Ce49XH9kGMPe0ms7iV7e9F6WgnsPFGOlIA3CwfGyr12okas2EsDd71SbSnA0zJYjyxeCVCZJWISmLB"
 	}
-	_SigningKey = []byte(key)
+	SigningKey = []byte(key)
 }
 
 //NewUser - user constructor
@@ -118,14 +119,15 @@ func (u *User) create() error {
 		return fmt.Errorf("Unable to register")
 	}
 
-	u.UUID = uuid.Must(uuid.NewV4()).String()
+	id := uuid.NewV4()
+	u.UUID = uuid.Must(id, nil).String()
 	u.Password = Hash(u.Password)
 	u.CreatedAt = time.Now()
 
 	err := db.Query("INSERT INTO users (uuid, email, password, pw_func, pw_alg, pw_cost, pw_key_size, pw_nonce, pw_auth, pw_salt, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", u.UUID, u.Email, u.Password, u.PwFunc, u.PwAlg, u.PwCost, u.PwKeySize, u.PwNonce, u.PwAuth, u.PwSalt, u.CreatedAt, u.UpdatedAt)
 
 	if err != nil {
-		Log(err)
+		logger.Log(err)
 	}
 
 	return err
@@ -147,7 +149,7 @@ func (u *User) UpdatePassword(np NewPassword) error {
 	err := db.Query("UPDATE `users` SET `password`=?, `pw_cost`=?, `pw_salt`=?, `pw_nonce`=?, `updated_at`=? WHERE `uuid`=?", u.Password, u.PwCost, u.PwSalt, u.PwNonce, u.UpdatedAt, u.UUID)
 
 	if err != nil {
-		Log(err)
+		logger.Log(err)
 		return err
 	}
 
@@ -164,7 +166,7 @@ func (u *User) UpdateParams(p Params) error {
 	err := db.Query("UPDATE `users` SET `pw_func`=?, `pw_alg`=?, `pw_cost`=?, `pw_key_size`=?, `pw_salt`=?, `updated_at`=? WHERE `uuid`=?", u.PwFunc, u.PwAlg, u.PwCost, u.PwKeySize, u.PwSalt, time.Now(), u.UUID)
 
 	if err != nil {
-		Log(err)
+		logger.Log(err)
 		return err
 	}
 
@@ -191,7 +193,7 @@ func (u User) Exists() bool {
 	uuid, err := db.SelectFirst("SELECT `uuid` FROM `users` WHERE `email`=?", u.Email)
 
 	if err != nil {
-		Log(err)
+		logger.Log(err)
 		return false
 	}
 
@@ -218,7 +220,7 @@ func (u *User) Login(email, password string) (string, error) {
 func (u *User) LoadByUUID(uuid string) bool {
 	_, err := db.SelectStruct(fmt.Sprintf("SELECT %s FROM `users` WHERE `uuid`=?", sqlstruct.Columns(User{})), u, uuid)
 	if err != nil {
-		Log("Load err:", err)
+		logger.Log("Load err:", err)
 		return false
 	}
 
@@ -236,7 +238,7 @@ func (u User) CreateToken() (string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString(_SigningKey)
+	tokenString, err := token.SignedString(SigningKey)
 	if err != nil {
 		return "", err
 	}
@@ -247,18 +249,18 @@ func (u User) CreateToken() (string, error) {
 func (u *User) loadByEmail(email string) {
 	_, err := db.SelectStruct("SELECT * FROM `users` WHERE `email`=?", u, email)
 	if err != nil {
-		Log(err)
+		logger.Log(err)
 	}
 }
 
 func (u *User) loadByEmailAndPassword(email, password string) {
 	_, err := db.SelectStruct("SELECT * FROM `users` WHERE `email`=? AND `password`=?", u, email, password)
 	if err != nil {
-		Log(err)
+		logger.Log(err)
 	}
 }
 
-//GetParams returns auth parameters by email
+// GetParams returns auth parameters by email
 func (u User) GetParams(email string) map[string]interface{} {
 	u.loadByEmail(email)
 	params := map[string]interface{}{}
