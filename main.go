@@ -1,135 +1,85 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strconv"
-	"strings"
 	"syscall"
 
 	"github.com/sevlyar/go-daemon"
-
-	"github.com/heetch/confita"
-	"github.com/heetch/confita/backend"
-	"github.com/heetch/confita/backend/env"
-	"github.com/heetch/confita/backend/file"
-	"github.com/heetch/confita/backend/flags"
 )
 
-type config struct {
-	DB         string `config:"db"`
-	Port       int    `config:"port"`
-	Socket     string `config:"socket"`
-	NoReg      bool   `config:"noreg"`
-	Debug      bool   `config:"debug"`
-	Foreground bool   `config:"foreground"`
-	UseCORS    bool   `config:"cors" json:"cors" yaml:"cors" toml:"cors"`
-}
-
-var cfg = config{
-	DB:         "sf.db",
-	Port:       8888,
-	Debug:      false,
-	NoReg:      false,
-	Foreground: false,
-	UseCORS:    false,
+type Args struct {
+	signal  bool
+	migrate bool
+	ver     bool
+	cfgPath string
 }
 
 var (
-	signal  = flag.Bool("stop", false, `shutdown server`)
-	migrate = flag.Bool("migrate", false, `perform DB migrations`)
-	ver     = flag.Bool("v", false, `show version`)
-	cfgPath = flag.String("c", ".", `config file location`)
-	run     = make(chan bool)
+	_Work         chan bool
+	_LoadedConfig = "using flags"
+	_Args         = Args{}
+	// _Version string will be set by linker
+	_Version = "dev"
+	// _BuildTime string will be set by linker
+	_BuildTime = "N/A"
 )
 
-var loadedConfig = "using flags"
-
-// Version string will be set by linker
-var Version = "dev"
-
-// BuildTime string will be set by linker
-var BuildTime = "N/A"
-
 func init() {
-	confBackends := []backend.Backend{}
-	cfgPath = getConfigFlag()
-
-	if *cfgPath == "env" {
-		confBackends = append(confBackends, env.NewBackend())
-		loadedConfig = "using environment"
-	} else {
-		configs := []string{"standardfile.json", "standardfile.toml", "standardfile.yaml"}
-		path := strings.TrimRight(*cfgPath, string(os.PathSeparator))
-		fileName := ""
-		if info, err := os.Stat(path); err == nil {
-			if !info.IsDir() {
-				fileName = filepath.Base(path)
-			}
-		}
-		if len(fileName) > 1 {
-			path = filepath.Dir(path)
-			configs = append([]string{fileName}, configs...)
-		}
-		for _, c := range configs {
-			if _, err := os.Stat(path + "/" + c); err == nil {
-				loadedConfig = path + "/" + c
-				confBackends = append(confBackends, file.NewBackend(loadedConfig))
-				break
-			}
-		}
-	}
-	confBackends = append(confBackends, flags.NewBackend())
-	loader := confita.NewLoader(confBackends...)
-	err := loader.Load(context.Background(), &cfg)
-	if err != nil {
-		fmt.Println(err)
-	}
+	_Work = make(chan bool)
+	flag.BoolVar(&_Args.signal, "stop", false, `shutdown server`)
+	flag.BoolVar(&_Args.migrate, "migrate", false, `perform DB migrations`)
+	flag.BoolVar(&_Args.ver, "v", false, `show version`)
+	flag.StringVar(&_Args.cfgPath, "c", ".", `config file location`)
+	flag.StringVar(&_Args.cfgPath, "config", ".", `config file location`)
 }
 
 func main() {
 	flag.Parse()
+	if err := initConf(_Args.cfgPath, &_Config); err != nil {
+		log.Println(err)
+		os.Exit(1)
+	}
 
-	if *ver {
+	if _Args.ver {
 		socket := "no"
-		if len(cfg.Socket) > 0 {
-			socket = cfg.Socket
+		if len(_Config.Socket) > 0 {
+			socket = _Config.Socket
 		}
-		fmt.Println(`        Version:           ` + Version + `
-        Built:             ` + BuildTime + `
+		fmt.Println(`        Version:           ` + _Version + `
+        Built:             ` + _BuildTime + `
         Go Version:        ` + runtime.Version() + `
         OS/Arch:           ` + runtime.GOOS + "/" + runtime.GOARCH + `
-        Loaded Config:     ` + loadedConfig + `
-        No Registrations:  ` + strconv.FormatBool(cfg.NoReg) + `
-        CORS Enabled:      ` + strconv.FormatBool(cfg.UseCORS) + `
-        Run in Foreground: ` + strconv.FormatBool(cfg.Foreground) + `
-        Webserver Port:    ` + strconv.Itoa(cfg.Port) + `
+        Loaded Config:     ` + _LoadedConfig + `
+        No Registrations:  ` + strconv.FormatBool(_Config.NoReg) + `
+        CORS Enabled:      ` + strconv.FormatBool(_Config.UseCORS) + `
+        Run in Foreground: ` + strconv.FormatBool(_Config.Foreground) + `
+        Webserver Port:    ` + strconv.Itoa(_Config.Port) + `
         Socket:            ` + socket + `
-        DB Path:           ` + cfg.DB + `
-        Debug:             ` + strconv.FormatBool(cfg.Debug))
+        DB Path:           ` + _Config.DB + `
+        Debug:             ` + strconv.FormatBool(_Config.Debug))
 		return
 	}
 
-	if *migrate {
-		Migrate()
+	if _Args.migrate {
+		Migrate(_Config)
 		return
 	}
 
-	if cfg.Port == 0 {
-		cfg.Port = 8888
+	if _Config.Port == 0 {
+		_Config.Port = 8888
 	}
 
-	if cfg.Foreground {
-		worker()
+	if _Config.Foreground {
+		Worker(_Config)
 		return
 	}
 
-	daemon.AddCommand(daemon.BoolFlag(signal), syscall.SIGTERM, termHandler)
+	daemon.AddCommand(daemon.BoolFlag(&_Args.signal), syscall.SIGTERM, termHandler)
 
 	cntxt := &daemon.Context{
 		PidFileName: "pid",
@@ -160,7 +110,7 @@ func main() {
 	}
 	defer cntxt.Release()
 
-	go worker()
+	go Worker(_Config)
 
 	if err := daemon.ServeSignals(); err != nil {
 		log.Println("Error:", err)
@@ -168,59 +118,6 @@ func main() {
 }
 
 func termHandler(sig os.Signal) error {
-	close(run)
+	close(_Work)
 	return daemon.ErrStop
-}
-
-func getConfigFlag() *string {
-	cfg := "."
-	args := os.Args[1:]
-	if len(args) == 0 {
-		return &cfg
-	}
-	s := args[0]
-	if len(s) < 2 || s[0] != '-' {
-		return &cfg
-	}
-	numMinuses := 1
-	if s[1] == '-' {
-		numMinuses++
-		if len(s) == 2 { // "--" terminates the flags
-			return &cfg
-		}
-	}
-
-	name := s[numMinuses:]
-	if len(name) == 0 || name[0] == '-' || name[0] == '=' {
-		log.Fatalf("bad flag syntax: %s", s)
-		return &cfg
-	}
-
-	args = args[1:]
-	hasValue := false
-	value := ""
-
-	// possible to set it as -config=value or -c=value
-	for i := 1; i < len(name); i++ {
-		if name[i] == '=' {
-			value = name[i+1:]
-			hasValue = true
-			name = name[0:i]
-			break
-		}
-	}
-
-	//check if flag name is config
-	if name != "c" && name != "config" {
-		return &cfg
-	}
-
-	if !hasValue && len(args) > 0 {
-		// value is the next arg
-		hasValue = true
-		value = args[0]
-	}
-
-	cfg = value
-	return &cfg
 }

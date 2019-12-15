@@ -11,7 +11,7 @@ import (
 
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/kisielk/sqlstruct"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 	"github.com/tectiv3/standardfile/db"
 )
 
@@ -55,15 +55,15 @@ type UserClaims struct {
 	jwt.StandardClaims
 }
 
-//SigningKey - export to routing
-var SigningKey = []byte{}
+// _SigningKey - export to routing
+var _SigningKey = []byte{}
 
 func init() {
 	key := os.Getenv("SECRET_KEY_BASE")
 	if key == "" {
 		key = "qA6irmDikU6RkCM4V0cJiUJEROuCsqTa1esexI4aWedSv405v8lw4g1KB1nQVsSdCrcyRlKFdws4XPlsArWwv9y5Xr5Jtkb11w1NxKZabOUa7mxjeENuCs31Y1Ce49XH9kGMPe0ms7iV7e9F6WgnsPFGOlIA3CwfGyr12okas2EsDd71SbSnA0zJYjyxeCVCZJWISmLB"
 	}
-	SigningKey = []byte(key)
+	_SigningKey = []byte(key)
 }
 
 //NewUser - user constructor
@@ -236,7 +236,7 @@ func (u User) CreateToken() (string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString(SigningKey)
+	tokenString, err := token.SignedString(_SigningKey)
 	if err != nil {
 		return "", err
 	}

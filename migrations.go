@@ -10,7 +10,7 @@ import (
 )
 
 //Migrate performs migration
-func Migrate() {
+func Migrate(cfg config) {
 	db.Init(cfg.DB)
 	migrations := getMigrations()
 	err := m.Exec(db.DB(), m.Up, migrations...)

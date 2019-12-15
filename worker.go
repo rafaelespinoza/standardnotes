@@ -15,10 +15,10 @@ import (
 	"github.com/tectiv3/standardfile/db"
 )
 
-func worker() {
+func Worker(cfg config) {
 	db.Init(cfg.DB)
-	log.Println("Started StandardFile Server", Version)
-	log.Println("Loaded config:", loadedConfig)
+	log.Println("Started StandardFile Server", _Version)
+	log.Println("Loaded config:", _LoadedConfig)
 
 	if cfg.Debug {
 		log.Println("Debug on")
@@ -46,14 +46,14 @@ func worker() {
 	r.Post("/api/auth/sign_in.json", Login)
 	r.Get("/api/auth/params", GetParams)
 
-	defer removeSock()
-	go listen(r)
-	<-run
+	defer removeSock(cfg)
+	go listen(r, cfg)
+	<-_Work
 	log.Println("Server stopped")
 	os.Exit(0)
 }
 
-func listen(r *pure.Mux) {
+func listen(r *pure.Mux, cfg config) {
 	if len(cfg.Socket) != 0 {
 		os.Remove(cfg.Socket)
 		unixListener, err := net.Listen("unix", cfg.Socket)
@@ -85,7 +85,7 @@ func cors(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func removeSock() {
+func removeSock(cfg config) {
 	if len(cfg.Socket) != 0 {
 		os.Remove(cfg.Socket)
 	}

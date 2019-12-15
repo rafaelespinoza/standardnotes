@@ -14,9 +14,9 @@ import (
 
 type data map[string]interface{}
 
-//Log writes in log if debug flag is set
-func Log(v ...interface{}) {
-	if cfg.Debug {
+// Log writes in log if debug flag is set
+func Log(v ...interface{}) { // can't easily pass in `cfg` here
+	if _Config.Debug { // TODO: use init function to grab this
 		log.Println(v...)
 	}
 }
@@ -43,7 +43,7 @@ func authenticateUser(r *http.Request) (User, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
 		}
-		return SigningKey, nil
+		return _SigningKey, nil
 	})
 
 	if err != nil {
@@ -68,7 +68,7 @@ func authenticateUser(r *http.Request) (User, error) {
 //Dashboard - is the root handler
 func Dashboard(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Dashboard. Server version: " + Version))
+	w.Write([]byte("Dashboard. Server version: " + _Version))
 }
 
 //ChangePassword - is the change password handler
