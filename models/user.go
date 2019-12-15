@@ -1,10 +1,8 @@
 package models
 
 import (
-	"crypto/sha1"
 	"crypto/sha256"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +10,7 @@ import (
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/kisielk/sqlstruct"
 	"github.com/rafaelespinoza/standardfile/db"
+	"github.com/rafaelespinoza/standardfile/encryption"
 	"github.com/rafaelespinoza/standardfile/logger"
 	uuid "github.com/satori/go.uuid"
 )
@@ -31,6 +30,12 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"  sql:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"  sql:"updated_at"`
 }
+
+var _ db.MigratingUser = (*User)(nil)
+
+func (u *User) GetEmail() string   { return u.Email }
+func (u *User) GetPwNonce() string { return u.PwNonce }
+func (u *User) GetUUID() string    { return u.UUID }
 
 // Params is params type
 type Params struct {
@@ -54,17 +59,6 @@ type UserClaims struct {
 	UUID   string `json:"uuid"`
 	PwHash string `json:"pw_hash"`
 	jwt.StandardClaims
-}
-
-// SigningKey - export to routing
-var SigningKey = []byte{}
-
-func init() {
-	key := os.Getenv("SECRET_KEY_BASE")
-	if key == "" {
-		key = "qA6irmDikU6RkCM4V0cJiUJEROuCsqTa1esexI4aWedSv405v8lw4g1KB1nQVsSdCrcyRlKFdws4XPlsArWwv9y5Xr5Jtkb11w1NxKZabOUa7mxjeENuCs31Y1Ce49XH9kGMPe0ms7iV7e9F6WgnsPFGOlIA3CwfGyr12okas2EsDd71SbSnA0zJYjyxeCVCZJWISmLB"
-	}
-	SigningKey = []byte(key)
 }
 
 //NewUser - user constructor
@@ -238,7 +232,7 @@ func (u User) CreateToken() (string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString(SigningKey)
+	tokenString, err := token.SignedString(encryption.SigningKey)
 	if err != nil {
 		return "", err
 	}
@@ -288,15 +282,11 @@ func (u User) GetParams(email string) map[string]interface{} {
 		if nonce == "" {
 			nonce = "a04a8fe6bcb19ba61c5c0873d391e987982fbbd4"
 		}
-		u.PwSalt = getSalt(u.Email, nonce)
+		u.PwSalt = encryption.Salt(u.Email, nonce)
 	}
 	params["pw_salt"] = u.PwSalt
 
 	return params
-}
-
-func getSalt(email, nonce string) string {
-	return strings.Replace(fmt.Sprintf("% x", sha1.Sum([]byte(email+"SN"+nonce))), " ", "", -1)
 }
 
 //Validate - validates password from jwt

@@ -1,5 +1,4 @@
-// TODO: move elsewhere, figure out getSalt thing
-package models
+package db
 
 import (
 	"database/sql"
@@ -7,15 +6,22 @@ import (
 	"time"
 
 	"github.com/rafaelespinoza/standardfile/config"
-	"github.com/rafaelespinoza/standardfile/db"
+	"github.com/rafaelespinoza/standardfile/encryption"
 	m "github.com/remind101/migrate"
 )
 
+// MigratingUser facilitates database migrations with a User.
+type MigratingUser interface {
+	GetEmail() string
+	GetPwNonce() string
+	GetUUID() string
+}
+
 // Migrate performs migration
 func Migrate(cfg config.Config) {
-	db.Init(cfg.DB)
+	Init(cfg.DB)
 	migrations := getMigrations()
-	err := m.Exec(db.DB(), m.Up, migrations...)
+	err := m.Exec(DB(), m.Up, migrations...)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -38,14 +44,16 @@ func getMigrations() []m.Migration {
 		{
 			ID: 2,
 			Up: func(tx *sql.Tx) error {
-				users := []User{}
-				db.Select("SELECT * FROM `users`", &users)
+				users := []MigratingUser{}
+				Select("SELECT * FROM `users`", &users)
 				log.Println("Got", len(users), "users to update")
 				for _, u := range users {
-					if u.Email == "" || u.PwNonce == "" {
+					email := u.GetEmail()
+					nonce := u.GetPwNonce()
+					if email == "" || nonce == "" {
 						continue
 					}
-					if _, err := tx.Exec("UPDATE `users` SET `pw_salt`=?, `updated_at`=? WHERE `uuid`=?", getSalt(u.Email, u.PwNonce), time.Now(), u.UUID); err != nil {
+					if _, err := tx.Exec("UPDATE `users` SET `pw_salt`=?, `updated_at`=? WHERE `uuid`=?", encryption.Salt(email, nonce), time.Now(), u.GetUUID()); err != nil {
 						log.Println(err)
 					}
 				}

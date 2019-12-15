@@ -11,7 +11,7 @@ import (
 
 	"github.com/rafaelespinoza/standardfile/api"
 	"github.com/rafaelespinoza/standardfile/config"
-	"github.com/rafaelespinoza/standardfile/models"
+	"github.com/rafaelespinoza/standardfile/db"
 	"github.com/sevlyar/go-daemon"
 )
 
@@ -69,7 +69,7 @@ func main() {
 	}
 
 	if _Args.migrate {
-		models.Migrate(conf)
+		db.Migrate(conf)
 		return
 	}
 

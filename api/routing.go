@@ -10,6 +10,7 @@ import (
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/go-playground/pure"
 	"github.com/rafaelespinoza/standardfile/config"
+	"github.com/rafaelespinoza/standardfile/encryption"
 	"github.com/rafaelespinoza/standardfile/logger"
 	"github.com/rafaelespinoza/standardfile/models"
 )
@@ -38,7 +39,7 @@ func authenticateUser(r *http.Request) (models.User, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
 		}
-		return models.SigningKey, nil
+		return encryption.SigningKey, nil
 	})
 
 	if err != nil {
