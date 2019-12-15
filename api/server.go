@@ -21,14 +21,17 @@ func init() {
 	_Work = make(chan bool)
 }
 
+// Shutdown closes the server's internal channel.
 func Shutdown() {
 	close(_Work)
 }
 
-func Worker(cfg config.Config) {
+// Serve is the main workhorse of this package. It maps request routes to
+// handlers and listens on the configured socket.
+func Serve(cfg config.Config) {
 	db.Init(cfg.DB)
-	log.Println("Started StandardFile Server", config.MiscData.Version)
-	log.Println("Loaded config:", config.MiscData.LoadedConfig)
+	log.Println("Started StandardFile Server", config.Metadata.Version)
+	log.Println("Loaded config:", config.Metadata.LoadedConfig)
 
 	if cfg.Debug {
 		log.Println("Debug on")

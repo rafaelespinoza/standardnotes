@@ -16,8 +16,6 @@ import (
 
 type data map[string]interface{}
 
-var _Config config.Config // TODO: fix
-
 type sfError struct {
 	Message string `json:"message"`
 	Code    int    `json:"code"`
@@ -65,7 +63,7 @@ func authenticateUser(r *http.Request) (models.User, error) {
 // Dashboard - is the root handler
 func Dashboard(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Dashboard. Server version: " + config.MiscData.Version))
+	w.Write([]byte("Dashboard. Server version: " + config.Metadata.Version))
 }
 
 // ChangePassword - is the change password handler
@@ -82,12 +80,12 @@ func ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(np.CurrentPassword) == 0 {
-		showError(w, fmt.Errorf("Your current password is required to change your password. Please update your application if you do not see this option."), http.StatusUnauthorized)
+		showError(w, fmt.Errorf("your current password is required to change your password. Please update your application if you do not see this option"), http.StatusUnauthorized)
 		return
 	}
 
 	if _, err := user.Login(np.Email, np.CurrentPassword); err != nil {
-		showError(w, fmt.Errorf("The current password you entered is incorrect. Please try again."), http.StatusUnauthorized)
+		showError(w, fmt.Errorf("the current password you entered is incorrect. Please try again"), http.StatusUnauthorized)
 		return
 	}
 
@@ -176,7 +174,7 @@ func GetParams(w http.ResponseWriter, r *http.Request) {
 	pure.JSON(w, http.StatusOK, params)
 }
 
-//SyncItems - is the items sync handler
+// SyncItems is the items sync handler.
 func SyncItems(w http.ResponseWriter, r *http.Request) {
 	user, err := authenticateUser(r)
 	if err != nil {
@@ -199,7 +197,7 @@ func SyncItems(w http.ResponseWriter, r *http.Request) {
 	pure.JSON(w, http.StatusAccepted, response)
 }
 
-//BackupItems - export items
+// BackupItems export items.
 func BackupItems(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {

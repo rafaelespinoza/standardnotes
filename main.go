@@ -78,7 +78,7 @@ func main() {
 	}
 
 	if conf.Foreground {
-		api.Worker(conf)
+		api.Serve(conf)
 		return
 	}
 
@@ -113,7 +113,7 @@ func main() {
 	}
 	defer cntxt.Release()
 
-	go api.Worker(conf)
+	go api.Serve(conf)
 
 	if err := daemon.ServeSignals(); err != nil {
 		log.Println("Error:", err)

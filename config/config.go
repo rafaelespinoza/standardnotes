@@ -35,7 +35,7 @@ func InitConf(path string) (err error) {
 	return
 }
 
-var MiscData = struct {
+var Metadata = struct {
 	Version      string
 	LoadedConfig string
 }{}
