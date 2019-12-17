@@ -10,6 +10,7 @@ import (
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/rafaelespinoza/standardfile/config"
 	"github.com/rafaelespinoza/standardfile/encryption"
+	"github.com/rafaelespinoza/standardfile/interactors"
 	"github.com/rafaelespinoza/standardfile/logger"
 	"github.com/rafaelespinoza/standardfile/models"
 )
@@ -223,7 +224,7 @@ func SyncItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	logger.Log("Request:", request)
-	response, err := user.SyncItems(request)
+	response, err := interactors.SyncUserItems(user, request)
 	if err != nil {
 		showError(w, err, http.StatusInternalServerError)
 		return

@@ -1,10 +1,13 @@
 package models
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"log"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -41,24 +44,26 @@ type Items []Item
 
 //SyncRequest - type for incoming sync request
 type SyncRequest struct {
-	Items       Items  `json:"items"`
-	SyncToken   string `json:"sync_token"`
-	CursorToken string `json:"cursor_token"`
-	Limit       int    `json:"limit"`
+	Items            Items  `json:"items"`
+	SyncToken        string `json:"sync_token"`
+	CursorToken      string `json:"cursor_token"`
+	Limit            int    `json:"limit"`
+	ComputeIntegrity bool   `json:"compute_integrity"`
 }
 
-type unsaved struct {
+type Unsaved struct {
 	Item
 	error
 }
 
 //SyncResponse - type for response
 type SyncResponse struct {
-	Retrieved   Items     `json:"retrieved_items"`
-	Saved       Items     `json:"saved_items"`
-	Unsaved     []unsaved `json:"unsaved"`
-	SyncToken   string    `json:"sync_token"`
-	CursorToken string    `json:"cursor_token,omitempty"`
+	Retrieved     Items     `json:"retrieved_items"`
+	Saved         Items     `json:"saved_items"`
+	Unsaved       []Unsaved `json:"unsaved"`
+	SyncToken     string    `json:"sync_token"`
+	CursorToken   string    `json:"cursor_token,omitempty"`
+	IntegrityHash string    `json:"integrity_hash"`
 }
 
 const minConflictInterval = 20.0
@@ -173,12 +178,50 @@ func (i *Item) LoadByUUID(uuid string) bool {
 	return true
 }
 
-//GetTokenFromTime - generates sync token for current time
-func GetTokenFromTime(date time.Time) string {
-	return base64.URLEncoding.EncodeToString([]byte(fmt.Sprintf("1:%d", date.UnixNano())))
+type Frequency uint8
+
+const (
+	frequencyNever Frequency = iota
+	FrequencyRealtime
+	FrequencyHourly
+	FrequencyDaily
+)
+
+type ContentMetadata struct {
+	Frequency Frequency // hourly, daily, weekly, monthly
+	SubType   string    // backup.email_archive
+	URL       string
 }
 
-//GetTimeFromToken - retrieve datetime from sync token
+// TODO: implement, should return the metadata only.
+func (i *Item) DecodedContentMetadata() (out *ContentMetadata) {
+	if i.Content == "" {
+		return
+	}
+	return
+}
+
+func (i *Item) IsDailyBackupExtension() bool {
+	if i.ContentType != "SF|Extension" {
+		return false
+	}
+	content := i.DecodedContentMetadata()
+	return content != nil && content.Frequency == FrequencyDaily
+}
+
+// GetTokenFromTime generates sync token for current time. TODO: rename to TokenizeTime
+func GetTokenFromTime(date time.Time) string {
+	return base64.URLEncoding.EncodeToString(
+		[]byte(
+			fmt.Sprintf(
+				"1:%d", // TODO: make use of "version" 1 and 2. (part before :)
+				date.UnixNano(),
+			),
+		),
+	)
+}
+
+// GetTimeFromToken - retrieve datetime from sync token
 func GetTimeFromToken(token string) time.Time {
 	decoded, err := base64.URLEncoding.DecodeString(token)
 	if err != nil {
@@ -191,49 +234,12 @@ func GetTimeFromToken(token string) time.Time {
 		logger.Log(err)
 		return time.Now()
 	}
+	// TODO: output "version" 1, 2 differently. See
+	// `lib/sync_engine/abstract/sync_manager.rb` in the ruby sync-server
 	return time.Time(time.Unix(0, int64(str)))
 }
 
-//SyncItems - sync manager
-func (u User) SyncItems(request SyncRequest) (SyncResponse, error) {
-
-	response := SyncResponse{
-		Retrieved:   Items{},
-		Saved:       Items{},
-		Unsaved:     []unsaved{},
-		SyncToken:   GetTokenFromTime(time.Now()),
-		CursorToken: "",
-	}
-
-	if request.Limit == 0 {
-		request.Limit = 100000
-	}
-	var err error
-	var cursorTime time.Time
-	logger.Log("Get items")
-	response.Retrieved, cursorTime, err = u.getItems(request)
-	// logger.Log("Retrieved items:", response.Retrieved)
-	if err != nil {
-		return response, err
-	}
-	if !cursorTime.IsZero() {
-		response.CursorToken = GetTokenFromTime(cursorTime)
-	}
-	logger.Log("Save incoming items", request)
-	response.Saved, response.Unsaved, err = request.Items.save(u.UUID)
-	if err != nil {
-		return response, err
-	}
-	if len(response.Saved) > 0 {
-		response.SyncToken = GetTokenFromTime(response.Saved[0].UpdatedAt)
-		// Check for conflicts
-		logger.Log("Conflicts check")
-		response.Saved.checkForConflicts(&response.Retrieved)
-	}
-	return response, nil
-}
-
-func (items Items) checkForConflicts(existing *Items) {
+func (items Items) CheckForConflicts(existing *Items) {
 	logger.Log("Saved len:", len(items))
 	logger.Log("Retrieved len:", len(*existing))
 	saved := mapset.NewSet()
@@ -272,9 +278,9 @@ func (i Item) isConflictedWith(copy Item) bool {
 	return diff > minConflictInterval
 }
 
-func (items Items) save(userUUID string) (Items, []unsaved, error) {
+func (items Items) Save(userUUID string) (Items, []Unsaved, error) {
 	savedItems := Items{}
-	unsavedItems := []unsaved{}
+	unsavedItems := []Unsaved{}
 
 	if len(items) == 0 {
 		return savedItems, unsavedItems, nil
@@ -289,7 +295,7 @@ func (items Items) save(userUUID string) (Items, []unsaved, error) {
 			err = item.save()
 		}
 		if err != nil {
-			unsavedItems = append(unsavedItems, unsaved{item, err})
+			unsavedItems = append(unsavedItems, Unsaved{item, err})
 			logger.Log("Unsaved:", item)
 		} else {
 			item.load() //reloading item info from DB
@@ -304,7 +310,7 @@ func (i *Item) load() bool {
 	return i.LoadByUUID(i.UUID)
 }
 
-func (u User) getItems(request SyncRequest) (items Items, cursorTime time.Time, err error) {
+func (u User) LoadItems(request SyncRequest) (items Items, cursorTime time.Time, err error) {
 	if request.CursorToken != "" {
 		logger.Log("loadItemsFromDate")
 		items, err = u.loadItemsFromDate(GetTimeFromToken(request.CursorToken))
@@ -313,7 +319,7 @@ func (u User) getItems(request SyncRequest) (items Items, cursorTime time.Time, 
 		items, err = u.loadItemsOlder(GetTimeFromToken(request.SyncToken))
 	} else {
 		logger.Log("loadItems")
-		items, err = u.loadItems(request.Limit)
+		items, err = u.loadAllItems(request.Limit)
 		if len(items) > 0 {
 			cursorTime = items[len(items)-1].UpdatedAt
 		}
@@ -333,10 +339,32 @@ func (u User) loadItemsOlder(date time.Time) ([]Item, error) {
 	return items, err
 }
 
-func (u User) loadItems(limit int) ([]Item, error) {
+func (u User) loadAllItems(limit int) ([]Item, error) {
 	items := []Item{}
 	err := db.Select("SELECT * FROM `items` WHERE `user_uuid`=? ORDER BY `updated_at` DESC", &items, u.UUID)
 	return items, err
+}
+
+func (u User) LoadActiveItems() (items []Item, err error) {
+	err = db.Select(
+		`SELECT * FROM 'items'
+		WHERE 'user_uuid'=? AND 'content_type' IS NOT '' AND deleted = ?
+		ORDER BY 'updated_at' DESC`,
+		&items,
+		u.UUID, "SF|Extension", false,
+	)
+	return
+}
+
+func (u User) LoadActiveExtensionItems() (items []Item, err error) {
+	err = db.Select(
+		`SELECT * FROM 'items'
+		WHERE 'user_uuid'=? AND 'content_type' = ? AND deleted = ?
+		ORDER BY 'updated_at' DESC`,
+		&items,
+		u.UUID, "SF|Extension", false,
+	)
+	return
 }
 
 func (items Items) find(uuid string) Item {
@@ -357,4 +385,34 @@ func (items *Items) delete(uuid string) {
 		}
 	}
 	(*items) = (*items)[:position:position]
+}
+
+func (items Items) ComputeHashDigest() string {
+	timestamps := make([]string, len(items))
+	for i, item := range items {
+		timestamps[i] = strconv.FormatInt(item.UpdatedAt.Unix(), 10)
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(timestamps)))
+	input := strings.Join(timestamps, ",")
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(input)))
+}
+
+// computeHashDigestAlt differs from the other one in how it sorts. This one
+// sorts by time values, which are int64, while the other sorts the int64 after
+// it's been casted to a string.
+func (items Items) computeHashDigestAlt() string {
+	timestamps := make([]time.Time, len(items))
+	for i, item := range items {
+		timestamps[i] = item.UpdatedAt
+	}
+	sort.Slice(timestamps, func(i, j int) bool {
+		return timestamps[j].Before(timestamps[i])
+	})
+	var buf bytes.Buffer
+	var i int
+	for ; i < len(timestamps)-1; i++ {
+		buf.Write([]byte(strconv.FormatInt(timestamps[i].Unix(), 10) + ","))
+	}
+	buf.Write([]byte(strconv.FormatInt(timestamps[i].Unix(), 10)))
+	return fmt.Sprintf("%x", sha256.Sum256(buf.Bytes()))
 }
