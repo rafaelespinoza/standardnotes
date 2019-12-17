@@ -53,7 +53,7 @@ func PerformMailerJob(params MailerJobParams) (err error) {
 		attachment.Content = data
 	}
 
-	contents.AuthParams = user.AuthParams()
+	contents.AuthParams = models.MakeAuthParams(user)
 	attachment.Filename = fmt.Sprintf("SN-Data-%s.txt", time.Now().Format("20060102015405"))
 	attachment.MimeType = "application/json"
 	log.Printf("TODO: send email to user with attachment\n")

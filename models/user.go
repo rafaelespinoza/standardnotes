@@ -39,12 +39,14 @@ func (u *User) GetUUID() string    { return u.UUID }
 
 // Params is params type
 type Params struct {
-	PwFunc    string `json:"pw_func"     sql:"pw_func"`
-	PwAlg     string `json:"pw_alg"      sql:"pw_alg"`
-	PwCost    int    `json:"pw_cost"     sql:"pw_cost"`
-	PwKeySize int    `json:"pw_key_size" sql:"pw_key_size"`
-	PwSalt    string `json:"pw_salt"     sql:"pw_salt"`
-	Version   string `json:"version"`
+	PwFunc     string `json:"pw_func"     sql:"pw_func"`
+	PwAlg      string `json:"pw_alg"      sql:"pw_alg"`
+	PwCost     int    `json:"pw_cost"     sql:"pw_cost"`
+	PwKeySize  int    `json:"pw_key_size" sql:"pw_key_size"`
+	PwSalt     string `json:"pw_salt"     sql:"pw_salt"`
+	PwNonce    string `json:"pw_nonce"    sql:"pw_nonce"`
+	Version    string `json:"version"`
+	Identifier string `json:"identifier"` // should be email address
 }
 
 // NewPassword - incomming json password change
@@ -240,11 +242,13 @@ func (u User) CreateToken() (string, error) {
 	return tokenString, nil
 }
 
-func (u *User) loadByEmail(email string) {
+// LoadByEmail populates the user fields with a DB lookup.
+func (u *User) LoadByEmail(email string) error {
 	_, err := db.SelectStruct("SELECT * FROM `users` WHERE `email`=?", u, email)
 	if err != nil {
 		logger.Log(err)
 	}
+	return err
 }
 
 func (u *User) loadByEmailAndPassword(email, password string) {
@@ -254,27 +258,40 @@ func (u *User) loadByEmailAndPassword(email, password string) {
 	}
 }
 
-// GetParams returns auth parameters by email
-func (u User) GetParams(email string) map[string]interface{} {
-	u.loadByEmail(email)
-	params := map[string]interface{}{}
+// Params is the set of authentication parameters for the user.
+type Params struct {
+	PwFunc     string `json:"pw_func"     sql:"pw_func"`
+	PwAlg      string `json:"pw_alg"      sql:"pw_alg"`
+	PwCost     int    `json:"pw_cost"     sql:"pw_cost"`
+	PwKeySize  int    `json:"pw_key_size" sql:"pw_key_size"`
+	PwSalt     string `json:"pw_salt"     sql:"pw_salt"`
+	PwNonce    string `json:"pw_nonce"    sql:"pw_nonce"`
+	Version    string `json:"version"`
+	Identifier string `json:"identifier"` // should be email address
+}
+
+// MakeAuthParams constructs authentication parameters from User fields. NOTE:
+// it's tempting to put this into the interactors package, but you can't because
+// you'd get an import cycle.
+func MakeAuthParams(u User) Params {
+	var params Params
 
 	if u.Email == "" {
 		return params
 	}
 
-	params["version"] = "003"
-	params["pw_cost"] = u.PwCost
-	params["identifier"] = u.Email
+	params.Version = "003"
+	params.PwCost = u.PwCost
+	params.Identifier = u.Email
 
 	if u.PwFunc != "" {
-		params["pw_func"] = u.PwFunc
-		params["pw_alg"] = u.PwAlg
-		params["pw_key_size"] = u.PwKeySize
+		params.PwFunc = u.PwFunc
+		params.PwAlg = u.PwAlg
+		params.PwKeySize = u.PwKeySize
 	}
 
 	if u.PwNonce != "" {
-		params["pw_nonce"] = u.PwNonce
+		params.PwNonce = u.PwNonce
 	}
 
 	if u.PwSalt == "" {
@@ -284,7 +301,7 @@ func (u User) GetParams(email string) map[string]interface{} {
 		}
 		u.PwSalt = encryption.Salt(u.Email, nonce)
 	}
-	params["pw_salt"] = u.PwSalt
+	params.PwSalt = u.PwSalt
 
 	return params
 }

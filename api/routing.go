@@ -194,15 +194,18 @@ func Login(w http.ResponseWriter, r *http.Request) {
 
 //GetParams - is the get auth parameters handler
 func GetParams(w http.ResponseWriter, r *http.Request) {
-	user := models.NewUser()
 	email := r.FormValue("email")
 	logger.Log("Request:", string(email))
-	if email == "" {
-		showError(w, fmt.Errorf("Empty email"), http.StatusUnauthorized)
+	var params models.Params
+	var err error
+	if params, err = interactors.MakeAuthParams(email); err == interactors.ErrInvalidEmail {
+		showError(w, err, http.StatusUnauthorized)
+		return
+	} else if err != nil {
+		showError(w, err, http.StatusInternalServerError)
 		return
 	}
-	params := user.GetParams(email)
-	if _, ok := params["version"]; !ok {
+	if v := params.Version; v == "" {
 		showError(w, fmt.Errorf("Invalid email or password"), http.StatusNotFound)
 		return
 	}
