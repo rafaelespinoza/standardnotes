@@ -49,7 +49,7 @@ func newServer(conf config.Config) *http.Server {
 	// Main
 	router.HandleFunc("/", Dashboard).Methods(http.MethodGet)
 
-	/* Items */
+	// Items
 	router.HandleFunc("/items/sync", itemsHandlers.Sync.ServeHTTP).Methods(http.MethodPost)
 	router.HandleFunc("/items/backup", itemsHandlers.Backup.ServeHTTP).Methods(http.MethodPost)
 	router.HandleFunc("/items", itemsHandlers.List.ServeHTTP).Methods(http.MethodGet)

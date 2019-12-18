@@ -51,7 +51,7 @@ func readJSONRequest(r *http.Request, dst interface{}) error {
 	return json.NewDecoder(r.Body).Decode(dst)
 }
 
-func authenticateUser(r *http.Request) (models.User, error) {
+func authenticateUser(r *http.Request) (*models.User, error) {
 	var user = models.NewUser()
 
 	authHeaderParts := strings.Split(r.Header.Get("Authorization"), " ")
@@ -85,36 +85,39 @@ func authenticateUser(r *http.Request) (models.User, error) {
 	return user, fmt.Errorf("Invalid token")
 }
 
-// Dashboard - is the root handler
+// Dashboard is the root handler.
+// GET /
 func Dashboard(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Dashboard. Server version: " + config.Metadata.Version))
 }
 
-// ChangePassword - is the change password handler
+// ChangePassword is the change password handler.
+// POST /auth/change_pw
 func ChangePassword(w http.ResponseWriter, r *http.Request) {
+	// TODO: move to interactor. This function should only do http.
 	user, err := authenticateUser(r)
 	if err != nil {
 		showError(w, err, http.StatusUnauthorized)
 		return
 	}
-	np := models.NewPassword{}
-	if err := readJSONRequest(r, &np); err != nil {
+	password := models.NewPassword{}
+	if err := readJSONRequest(r, &password); err != nil {
 		showError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
 
-	if len(np.CurrentPassword) == 0 {
+	if len(password.CurrentPassword) == 0 {
 		showError(w, fmt.Errorf("your current password is required to change your password. Please update your application if you do not see this option"), http.StatusUnauthorized)
 		return
 	}
 
-	if _, err := user.Login(np.Email, np.CurrentPassword); err != nil {
+	if _, err := user.Login(password.Email, password.CurrentPassword); err != nil {
 		showError(w, fmt.Errorf("the current password you entered is incorrect. Please try again"), http.StatusUnauthorized)
 		return
 	}
 
-	if err := user.UpdatePassword(np); err != nil {
+	if err := user.UpdatePassword(password); err != nil {
 		showError(w, err, http.StatusInternalServerError)
 		return
 	}
@@ -131,7 +134,8 @@ func ChangePassword(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
-//UpdateUser - updates user params
+// UpdateUser updates user info.
+// POST /auth/update
 func UpdateUser(w http.ResponseWriter, r *http.Request) {
 	user, err := authenticateUser(r)
 	if err != nil {
@@ -152,7 +156,8 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusAccepted, nil)
 }
 
-//Registration - is the registration handler
+// Registration is the registration handler.
+// POST /auth/register
 func Registration(w http.ResponseWriter, r *http.Request) {
 	var user = models.NewUser()
 	if err := readJSONRequest(r, &user); err != nil {
@@ -172,7 +177,8 @@ func Registration(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
-//Login - is the login handler
+// Login handles sign in.
+// POST /auth/sign_in
 func Login(w http.ResponseWriter, r *http.Request) {
 	var user = models.NewUser()
 	if err := readJSONRequest(r, &user); err != nil {
@@ -192,7 +198,8 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
-//GetParams - is the get auth parameters handler
+// GetParams is the get auth parameters handler.
+// GET /auth/params
 func GetParams(w http.ResponseWriter, r *http.Request) {
 	email := r.FormValue("email")
 	logger.Log("Request:", string(email))
@@ -215,6 +222,7 @@ func GetParams(w http.ResponseWriter, r *http.Request) {
 }
 
 // SyncItems is the items sync handler.
+// POST /items/sync
 func SyncItems(w http.ResponseWriter, r *http.Request) {
 	user, err := authenticateUser(r)
 	if err != nil {
@@ -227,7 +235,7 @@ func SyncItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	logger.Log("Request:", request)
-	response, err := interactors.SyncUserItems(user, request)
+	response, err := interactors.SyncUserItems(*user, request)
 	if err != nil {
 		showError(w, err, http.StatusInternalServerError)
 		return
@@ -238,6 +246,7 @@ func SyncItems(w http.ResponseWriter, r *http.Request) {
 }
 
 // BackupItems export items.
+// POST /items/backup
 func BackupItems(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
