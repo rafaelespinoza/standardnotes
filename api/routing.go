@@ -59,7 +59,7 @@ func authenticateUser(r *http.Request) (*models.User, error) {
 		return user, fmt.Errorf("Missing authorization header")
 	}
 
-	token, err := jwt.ParseWithClaims(authHeaderParts[1], &models.UserClaims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(authHeaderParts[1], &interactors.UserClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
 		}
@@ -70,7 +70,7 @@ func authenticateUser(r *http.Request) (*models.User, error) {
 		return user, err
 	}
 
-	if claims, ok := token.Claims.(*models.UserClaims); ok && token.Valid {
+	if claims, ok := token.Claims.(*interactors.UserClaims); ok && token.Valid {
 		logger.Log("Token is valid, claims: ", claims)
 
 		if ok := user.LoadByUUID(claims.UUID); !ok {
@@ -95,38 +95,32 @@ func Dashboard(w http.ResponseWriter, r *http.Request) {
 // ChangePassword is the change password handler.
 // POST /auth/change_pw
 func ChangePassword(w http.ResponseWriter, r *http.Request) {
-	// TODO: move to interactor. This function should only do http.
 	user, err := authenticateUser(r)
 	if err != nil {
 		showError(w, err, http.StatusUnauthorized)
 		return
 	}
-	password := models.NewPassword{}
+	var password models.NewPassword
 	if err := readJSONRequest(r, &password); err != nil {
 		showError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
 
-	if len(password.CurrentPassword) == 0 {
-		showError(w, fmt.Errorf("your current password is required to change your password. Please update your application if you do not see this option"), http.StatusUnauthorized)
+	token, err := interactors.ChangeUserPassword(user, password)
+	switch err {
+	case nil:
+		break
+	case interactors.ErrNoPasswordProvidedDuringChange:
+		showError(w, err, http.StatusUnauthorized)
 		return
-	}
-
-	if _, err := user.Login(password.Email, password.CurrentPassword); err != nil {
-		showError(w, fmt.Errorf("the current password you entered is incorrect. Please try again"), http.StatusUnauthorized)
+	case interactors.ErrPasswordIncorrect:
+		showError(w, err, http.StatusUnauthorized)
 		return
-	}
-
-	if err := user.UpdatePassword(password); err != nil {
+	default:
 		showError(w, err, http.StatusInternalServerError)
 		return
 	}
-	// c.Code(http.StatusNoContent).Body("") //in spec, but SN requires token in return
-	token, err := user.Login(user.Email, user.Password)
-	if err != nil {
-		showError(w, err, http.StatusUnauthorized)
-		return
-	}
+
 	writeJSONResponse(
 		w,
 		http.StatusAccepted,
@@ -165,7 +159,7 @@ func Registration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	logger.Log("Request:", user)
-	token, err := user.Register()
+	token, err := interactors.RegisterUser(user)
 	if err != nil {
 		showError(w, err, http.StatusUnprocessableEntity)
 		return
@@ -186,7 +180,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	logger.Log("Request:", user)
-	token, err := user.Login(user.Email, user.Password)
+	token, err := interactors.LoginUser(*user, user.Email, user.Password)
 	if err != nil {
 		showError(w, err, http.StatusUnauthorized)
 		return

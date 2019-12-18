@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/kisielk/sqlstruct"
 	"github.com/rafaelespinoza/standardfile/db"
 	"github.com/rafaelespinoza/standardfile/encryption"
@@ -114,21 +113,6 @@ func (u *User) UpdateParams(p Params) error {
 	return nil
 }
 
-// Register creates a new user and returns a token.
-func (u *User) Register() (string, error) {
-	err := u.create()
-	if err != nil {
-		return "", err
-	}
-
-	token, err := u.Login(u.Email, u.Password)
-	if err != nil {
-		return "", fmt.Errorf("Registration failed")
-	}
-
-	return token, nil
-}
-
 // Exists checks if the user exists in the DB.
 func (u User) Exists() bool {
 	uuid, err := db.SelectFirst("SELECT `uuid` FROM `users` WHERE `email`=?", u.Email)
@@ -141,22 +125,6 @@ func (u User) Exists() bool {
 	return uuid != ""
 }
 
-// Login signs in the user. It returns a token on success, otherwise an error.
-func (u *User) Login(email, password string) (string, error) {
-	u.loadByEmailAndPassword(email, Hash(password))
-
-	if u.UUID == "" {
-		return "", fmt.Errorf("Invalid email or password")
-	}
-
-	token, err := u.CreateToken()
-	if err != nil {
-		return "", err
-	}
-
-	return token, nil
-}
-
 // LoadByUUID hydrates the user from the DB.
 func (u *User) LoadByUUID(uuid string) bool {
 	_, err := db.SelectStruct(fmt.Sprintf("SELECT %s FROM `users` WHERE `uuid`=?", sqlstruct.Columns(User{})), u, uuid)
@@ -166,25 +134,6 @@ func (u *User) LoadByUUID(uuid string) bool {
 	}
 
 	return true
-}
-
-// CreateToken makes a JWT token.
-func (u User) CreateToken() (string, error) {
-	claims := UserClaims{
-		u.UUID,
-		u.Password,
-		jwt.StandardClaims{
-			IssuedAt: time.Now().Unix(),
-		},
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString(encryption.SigningKey)
-	if err != nil {
-		return "", err
-	}
-
-	return tokenString, nil
 }
 
 // Validate checks the jwt for a valid password.
@@ -208,8 +157,8 @@ func (u *User) LoadByEmail(email string) error {
 	return err
 }
 
-// create saves the user to the DB.
-func (u *User) create() error {
+// Create saves the user to the DB.
+func (u *User) Create() error {
 	if u.UUID != "" {
 		return fmt.Errorf("Trying to save existing user")
 	}
@@ -236,8 +185,11 @@ func (u *User) create() error {
 	return err
 }
 
-func (u *User) loadByEmailAndPassword(email, password string) {
-	_, err := db.SelectStruct("SELECT * FROM `users` WHERE `email`=? AND `password`=?", u, email, password)
+func (u *User) LoadByEmailAndPassword(email, password string) {
+	_, err := db.SelectStruct(
+		"SELECT * FROM `users` WHERE `email`=? AND `password`=?",
+		u, email, Hash(password),
+	)
 	if err != nil {
 		logger.Log(err)
 	}
@@ -296,13 +248,6 @@ type NewPassword struct {
 	User
 	CurrentPassword string `json:"current_password"`
 	NewPassword     string `json:"new_password"`
-}
-
-// UserClaims is a set of JWT claims.
-type UserClaims struct {
-	UUID   string `json:"uuid"` // TODO: verify that this is User.UUID
-	PwHash string `json:"pw_hash"`
-	jwt.StandardClaims
 }
 
 // Hash computes a sha256 checksum of the input.
