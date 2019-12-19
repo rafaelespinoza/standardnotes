@@ -118,13 +118,24 @@ func (i *Item) create() error {
 	i.CreatedAt = time.Now()
 	i.UpdatedAt = time.Now()
 	logger.Log("Create:", i.UUID)
-	return db.Query("INSERT INTO `items` (`uuid`, `user_uuid`, content,  content_type, enc_item_key, auth_hash, deleted, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?)", i.UUID, i.UserUUID, i.Content, i.ContentType, i.EncItemKey, i.AuthHash, i.Deleted, i.CreatedAt, i.UpdatedAt)
+	return db.Query(`
+		INSERT INTO 'items' (
+			'uuid', 'user_uuid', content, content_type, enc_item_key, auth_hash, deleted, created_at, updated_at
+		) VALUES(?,?,?,?,?,?,?,?,?)`,
+		i.UUID, i.UserUUID, i.Content, i.ContentType, i.EncItemKey, i.AuthHash, i.Deleted, i.CreatedAt, i.UpdatedAt,
+	)
 }
 
 func (i *Item) update() error {
 	i.UpdatedAt = time.Now()
 	logger.Log("Update:", i.UUID)
-	return db.Query("UPDATE `items` SET `content`=?, `enc_item_key`=?, `auth_hash`=?, `deleted`=?, `updated_at`=? WHERE `uuid`=? AND `user_uuid`=?", i.Content, i.EncItemKey, i.AuthHash, i.Deleted, i.UpdatedAt, i.UUID, i.UserUUID)
+	return db.Query(`
+		UPDATE 'items'
+		SET 'content'=?, 'enc_item_key'=?, 'auth_hash'=?, 'deleted'=?, 'updated_at'=?
+		WHERE 'uuid'=? AND 'user_uuid'=?`,
+		i.Content, i.EncItemKey, i.AuthHash, i.Deleted, i.UpdatedAt,
+		i.UUID, i.UserUUID,
+	)
 }
 
 func (i *Item) delete() error {
@@ -136,7 +147,12 @@ func (i *Item) delete() error {
 	i.AuthHash = ""
 	i.UpdatedAt = time.Now()
 
-	return db.Query("UPDATE `items` SET `content`='', `enc_item_key`='', `auth_hash`='',`deleted`=1, `updated_at`=? WHERE `uuid`=? AND `user_uuid`=?", i.UpdatedAt, i.UUID, i.UserUUID)
+	return db.Query(`
+		UPDATE 'items'
+		SET 'content'='', 'enc_item_key'='', 'auth_hash'='','deleted'=1, 'updated_at'=?
+		WHERE 'uuid'=? AND 'user_uuid'=?`,
+		i.UpdatedAt, i.UUID, i.UserUUID,
+	)
 }
 
 func (i Item) copy() (Item, error) {
@@ -156,7 +172,7 @@ func (i Item) Exists() bool {
 	if i.UUID == "" {
 		return false
 	}
-	uuid, err := db.SelectFirst("SELECT `uuid` FROM `items` WHERE `uuid`=?", i.UUID)
+	uuid, err := db.SelectFirst("SELECT 'uuid' FROM 'items' WHERE 'uuid'=?", i.UUID)
 
 	if err != nil {
 		logger.Log(err)
@@ -168,7 +184,7 @@ func (i Item) Exists() bool {
 
 //LoadByUUID - loads item info from DB
 func (i *Item) LoadByUUID(uuid string) bool {
-	_, err := db.SelectStruct("SELECT * FROM `items` WHERE `uuid`=?", i, uuid)
+	_, err := db.SelectStruct("SELECT * FROM 'items' WHERE 'uuid'=?", i, uuid)
 
 	if err != nil {
 		logger.Log(err)
@@ -329,25 +345,40 @@ func (u User) LoadItems(request SyncRequest) (items Items, cursorTime time.Time,
 
 func (u User) loadItemsFromDate(date time.Time) ([]Item, error) {
 	items := []Item{}
-	err := db.Select("SELECT * FROM `items` WHERE `user_uuid`=? AND `updated_at` >= ? ORDER BY `updated_at` DESC", &items, u.UUID, date)
+	err := db.Select(`
+		SELECT *
+		FROM 'items'
+		WHERE 'user_uuid'=? AND 'updated_at' >= ?
+		ORDER BY 'updated_at' DESC`,
+		&items, u.UUID, date,
+	)
 	return items, err
 }
 
 func (u User) loadItemsOlder(date time.Time) ([]Item, error) {
 	items := []Item{}
-	err := db.Select("SELECT * FROM `items` WHERE `user_uuid`=? AND `updated_at` > ? ORDER BY `updated_at` DESC", &items, u.UUID, date)
+	err := db.Select(`
+		SELECT *
+		FROM 'items'
+		WHERE 'user_uuid'=? AND 'updated_at' > ?
+		ORDER BY 'updated_at' DESC`,
+		&items, u.UUID, date,
+	)
 	return items, err
 }
 
 func (u User) loadAllItems(limit int) ([]Item, error) {
 	items := []Item{}
-	err := db.Select("SELECT * FROM `items` WHERE `user_uuid`=? ORDER BY `updated_at` DESC", &items, u.UUID)
+	err := db.Select(
+		"SELECT * FROM 'items' WHERE 'user_uuid'=? ORDER BY 'updated_at' DESC",
+		&items, u.UUID,
+	)
 	return items, err
 }
 
 func (u User) LoadActiveItems() (items []Item, err error) {
-	err = db.Select(
-		`SELECT * FROM 'items'
+	err = db.Select(`
+		SELECT * FROM 'items'
 		WHERE 'user_uuid'=? AND 'content_type' IS NOT '' AND deleted = ?
 		ORDER BY 'updated_at' DESC`,
 		&items,
@@ -357,8 +388,8 @@ func (u User) LoadActiveItems() (items []Item, err error) {
 }
 
 func (u User) LoadActiveExtensionItems() (items []Item, err error) {
-	err = db.Select(
-		`SELECT * FROM 'items'
+	err = db.Select(`
+		SELECT * FROM 'items'
 		WHERE 'user_uuid'=? AND 'content_type' = ? AND deleted = ?
 		ORDER BY 'updated_at' DESC`,
 		&items,

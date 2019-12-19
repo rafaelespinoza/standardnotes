@@ -86,7 +86,13 @@ func (u *User) UpdatePassword(np NewPassword) error {
 
 	u.UpdatedAt = time.Now()
 	// TODO: validate incoming password params
-	err := db.Query("UPDATE `users` SET `password`=?, `pw_cost`=?, `pw_salt`=?, `pw_nonce`=?, `updated_at`=? WHERE `uuid`=?", u.Password, u.PwCost, u.PwSalt, u.PwNonce, u.UpdatedAt, u.UUID)
+	err := db.Query(`
+		UPDATE 'users'
+		SET 'password'=?, 'pw_cost'=?, 'pw_salt'=?, 'pw_nonce'=?, 'updated_at'=?
+		WHERE 'uuid'=?`,
+		u.Password, u.PwCost, u.PwSalt, u.PwNonce, u.UpdatedAt,
+		u.UUID,
+	)
 
 	if err != nil {
 		logger.Log(err)
@@ -103,7 +109,13 @@ func (u *User) UpdateParams(p Params) error {
 	}
 
 	u.UpdatedAt = time.Now()
-	err := db.Query("UPDATE `users` SET `pw_func`=?, `pw_alg`=?, `pw_cost`=?, `pw_key_size`=?, `pw_salt`=?, `updated_at`=? WHERE `uuid`=?", u.PwFunc, u.PwAlg, u.PwCost, u.PwKeySize, u.PwSalt, time.Now(), u.UUID)
+	err := db.Query(`
+		UPDATE 'users'
+		SET 'pw_func'=?, 'pw_alg'=?, 'pw_cost'=?, 'pw_key_size'=?, 'pw_salt'=?, 'updated_at'=?
+		WHERE 'uuid'=?`,
+		u.PwFunc, u.PwAlg, u.PwCost, u.PwKeySize, u.PwSalt, time.Now(),
+		u.UUID,
+	)
 
 	if err != nil {
 		logger.Log(err)
@@ -115,7 +127,10 @@ func (u *User) UpdateParams(p Params) error {
 
 // Exists checks if the user exists in the DB.
 func (u User) Exists() bool {
-	uuid, err := db.SelectFirst("SELECT `uuid` FROM `users` WHERE `email`=?", u.Email)
+	uuid, err := db.SelectFirst(
+		"SELECT 'uuid' FROM 'users' WHERE 'email'=?",
+		u.Email,
+	)
 
 	if err != nil {
 		logger.Log(err)
@@ -127,7 +142,13 @@ func (u User) Exists() bool {
 
 // LoadByUUID hydrates the user from the DB.
 func (u *User) LoadByUUID(uuid string) bool {
-	_, err := db.SelectStruct(fmt.Sprintf("SELECT %s FROM `users` WHERE `uuid`=?", sqlstruct.Columns(User{})), u, uuid)
+	_, err := db.SelectStruct(
+		fmt.Sprintf(
+			"SELECT %s FROM 'users' WHERE 'uuid'=?",
+			sqlstruct.Columns(User{}),
+		),
+		u, uuid,
+	)
 	if err != nil {
 		logger.Log("Load err:", err)
 		return false
@@ -150,7 +171,7 @@ func (u User) ToJSON() interface{} { // TODO: rm this method
 
 // LoadByEmail populates the user fields with a DB lookup.
 func (u *User) LoadByEmail(email string) error {
-	_, err := db.SelectStruct("SELECT * FROM `users` WHERE `email`=?", u, email)
+	_, err := db.SelectStruct("SELECT * FROM 'users' WHERE 'email'=?", u, email)
 	if err != nil {
 		logger.Log(err)
 	}
@@ -176,7 +197,13 @@ func (u *User) Create() error {
 	u.Password = Hash(u.Password)
 	u.CreatedAt = time.Now()
 
-	err := db.Query("INSERT INTO users (uuid, email, password, pw_func, pw_alg, pw_cost, pw_key_size, pw_nonce, pw_auth, pw_salt, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", u.UUID, u.Email, u.Password, u.PwFunc, u.PwAlg, u.PwCost, u.PwKeySize, u.PwNonce, u.PwAuth, u.PwSalt, u.CreatedAt, u.UpdatedAt)
+	err := db.Query(`
+		INSERT INTO users (
+			uuid, email, password, pw_func, pw_alg, pw_cost, pw_key_size,
+			pw_nonce, pw_auth, pw_salt, created_at, updated_at
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+		u.UUID, u.Email, u.Password, u.PwFunc, u.PwAlg, u.PwCost, u.PwKeySize,
+		u.PwNonce, u.PwAuth, u.PwSalt, u.CreatedAt, u.UpdatedAt)
 
 	if err != nil {
 		logger.Log(err)
@@ -187,7 +214,7 @@ func (u *User) Create() error {
 
 func (u *User) LoadByEmailAndPassword(email, password string) {
 	_, err := db.SelectStruct(
-		"SELECT * FROM `users` WHERE `email`=? AND `password`=?",
+		"SELECT * FROM 'users' WHERE 'email'=? AND 'password'=?",
 		u, email, Hash(password),
 	)
 	if err != nil {
