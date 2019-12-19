@@ -286,3 +286,72 @@ func Hash(input string) string {
 		-1,
 	)
 }
+
+func (u User) LoadActiveItems() (items Items, err error) {
+	err = db.Select(`
+		SELECT * FROM 'items'
+		WHERE 'user_uuid'=? AND 'content_type' IS NOT '' AND deleted = ?
+		ORDER BY 'updated_at' DESC`,
+		&items,
+		u.UUID, "SF|Extension", false,
+	)
+	return
+}
+
+func (u User) LoadActiveExtensionItems() (items Items, err error) {
+	err = db.Select(`
+		SELECT * FROM 'items'
+		WHERE 'user_uuid'=? AND 'content_type' = ? AND deleted = ?
+		ORDER BY 'updated_at' DESC`,
+		&items,
+		u.UUID, "SF|Extension", false,
+	)
+	return
+}
+
+func (u User) LoadItems(request SyncRequest) (items Items, cursorTime time.Time, err error) {
+	if request.CursorToken != "" {
+		logger.Log("loadItemsFromDate")
+		items, err = u.loadItemsFromDate(GetTimeFromToken(request.CursorToken))
+	} else if request.SyncToken != "" {
+		logger.Log("loadItemsOlder")
+		items, err = u.loadItemsOlder(GetTimeFromToken(request.SyncToken))
+	} else {
+		logger.Log("loadItems")
+		items, err = u.loadAllItems(request.Limit)
+		if len(items) > 0 {
+			cursorTime = items[len(items)-1].UpdatedAt
+		}
+	}
+	return items, cursorTime, err
+}
+
+func (u User) loadItemsFromDate(date time.Time) (items Items, err error) {
+	err = db.Select(`
+		SELECT *
+		FROM 'items'
+		WHERE 'user_uuid'=? AND 'updated_at' >= ?
+		ORDER BY 'updated_at' DESC`,
+		&items, u.UUID, date,
+	)
+	return
+}
+
+func (u User) loadItemsOlder(date time.Time) (items Items, err error) {
+	err = db.Select(`
+		SELECT *
+		FROM 'items'
+		WHERE 'user_uuid'=? AND 'updated_at' > ?
+		ORDER BY 'updated_at' DESC`,
+		&items, u.UUID, date,
+	)
+	return
+}
+
+func (u User) loadAllItems(limit int) (items Items, err error) {
+	err = db.Select(
+		"SELECT * FROM 'items' WHERE 'user_uuid'=? ORDER BY 'updated_at' DESC",
+		&items, u.UUID,
+	)
+	return
+}
