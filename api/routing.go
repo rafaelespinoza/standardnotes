@@ -73,8 +73,8 @@ func authenticateUser(r *http.Request) (*models.User, error) {
 	if claims, ok := token.Claims.(*interactors.UserClaims); ok && token.Valid {
 		logger.Log("Token is valid, claims: ", claims)
 
-		if ok := user.LoadByUUID(claims.UUID); !ok {
-			return user, fmt.Errorf("Unknown user")
+		if err = user.LoadByUUID(claims.UUID); err != nil {
+			return user, fmt.Errorf("unknown user; %v", err)
 		}
 
 		if user.Validate(claims.PwHash) {
@@ -124,7 +124,7 @@ func ChangePassword(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(
 		w,
 		http.StatusAccepted,
-		map[string]interface{}{"token": token, "user": user.ToJSON()},
+		map[string]interface{}{"token": token, "user": user.MakeSaferCopy()},
 	)
 }
 
@@ -167,7 +167,7 @@ func Registration(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(
 		w,
 		http.StatusCreated,
-		map[string]interface{}{"token": token, "user": user.ToJSON()},
+		map[string]interface{}{"token": token, "user": user.MakeSaferCopy()},
 	)
 }
 
@@ -188,7 +188,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(
 		w,
 		http.StatusAccepted,
-		map[string]interface{}{"token": token, "user": user.ToJSON()},
+		map[string]interface{}{"token": token, "user": user.MakeSaferCopy()},
 	)
 }
 

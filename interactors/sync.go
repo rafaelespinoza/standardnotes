@@ -123,7 +123,7 @@ func saveUserItems(user models.User, req models.SyncRequest, retrievedItems mode
 			continue
 		} else if alreadyExists {
 			// hydrate item fields with DB values
-			if _, err = item.LoadByUUID(incomingItem.UUID); err != nil {
+			if err = item.LoadByUUID(incomingItem.UUID); err != nil {
 				return
 			}
 		} else {

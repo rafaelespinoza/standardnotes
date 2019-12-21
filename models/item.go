@@ -30,15 +30,6 @@ type Item struct {
 	UpdatedAt   time.Time `json:"updated_at" sql:"updated_at"`
 }
 
-type it interface {
-	create() error
-	update() error
-	delete() error
-}
-
-//Items - is an items slice
-type Items []Item
-
 //SyncRequest - type for incoming sync request
 type SyncRequest struct {
 	Items            Items  `json:"items"`
@@ -63,49 +54,20 @@ type SyncResponse struct {
 	IntegrityHash string    `json:"integrity_hash"`
 }
 
-//LoadValue - hydrate struct from map
-func (r *SyncRequest) LoadValue(name string, value []string) {
-	switch name {
-	case "items":
-		r.Items = Items{}
-	case "sync_token":
-		r.SyncToken = value[0]
-	case "cursor_token":
-		r.CursorToken = value[0]
-	case "limit":
-		r.Limit, _ = strconv.Atoi(value[0])
+// Save either adds a new Item to the DB or updates an existing Item in the DB.
+func (i *Item) Save() error {
+	if i.UUID == "" {
+		return i.Create()
 	}
+	if exists, err := i.Exists(); err != nil {
+		return err
+	} else if !exists {
+		return i.Create()
+	}
+	return i.Update()
 }
 
-//LoadValue - hydrate struct from map
-func (i *Item) LoadValue(name string, value []string) {
-	switch name {
-	case "uuid":
-		i.UUID = value[0]
-	case "user_uuid":
-		i.UserUUID = value[0]
-	case "content":
-		i.Content = value[0]
-	case "enc_item_key":
-		i.EncItemKey = value[0]
-	case "content_type":
-		i.ContentType = value[0]
-	case "auth_hash":
-		i.ContentType = value[0]
-	case "deleted":
-		i.Deleted = (value[0] == "true")
-	}
-}
-
-//Save - save current item into DB
-func (i *Item) save() error {
-	if i.UUID == "" || !i.Exists() {
-		return i.create()
-	}
-	return i.update()
-}
-
-func (i *Item) create() error {
+func (i *Item) Create() error {
 	if i.UUID == "" {
 		id := uuid.NewV4()
 		i.UUID = uuid.Must(id, nil).String()
@@ -121,7 +83,7 @@ func (i *Item) create() error {
 	)
 }
 
-func (i *Item) update() error {
+func (i *Item) Update() error {
 	i.UpdatedAt = time.Now()
 	logger.Log("Update:", i.UUID)
 	return db.Query(`
@@ -133,9 +95,9 @@ func (i *Item) update() error {
 	)
 }
 
-func (i *Item) delete() error {
+func (i *Item) Delete() error {
 	if i.UUID == "" {
-		return fmt.Errorf("Trying to delete unexisting item")
+		return fmt.Errorf("attempted to delete non-existent item")
 	}
 	i.Content = ""
 	i.EncItemKey = ""
@@ -154,7 +116,7 @@ func (i Item) Copy() (Item, error) {
 	out := uuid.NewV4()
 	i.UUID = uuid.Must(out, nil).String()
 	i.UpdatedAt = time.Now()
-	err := i.create()
+	err := i.Create()
 	if err != nil {
 		logger.Log(err)
 		return Item{}, err
@@ -162,31 +124,23 @@ func (i Item) Copy() (Item, error) {
 	return i, nil
 }
 
-//Exists - checks if current user exists in DB
-func (i Item) Exists() bool {
+// Exists checks if an item exists in the DB.
+func (i *Item) Exists() (exists bool, err error) {
 	if i.UUID == "" {
-		return false
+		return
 	}
 	uuid, err := db.SelectFirst("SELECT 'uuid' FROM 'items' WHERE 'uuid'=?", i.UUID)
-
 	if err != nil {
-		logger.Log(err)
-		return false
+		return
 	}
-	logger.Log("Exists:", uuid)
-	return uuid != ""
+	exists = uuid != ""
+	return
 }
 
-//LoadByUUID - loads item info from DB
-func (i *Item) LoadByUUID(uuid string) bool {
-	_, err := db.SelectStruct("SELECT * FROM 'items' WHERE 'uuid'=?", i, uuid)
-
-	if err != nil {
-		logger.Log(err)
-		return false
-	}
-
-	return true
+// LoadByUUID populates the Item's fields by querying the DB.
+func (i *Item) LoadByUUID(uuid string) (err error) {
+	_, err = db.SelectStruct("SELECT * FROM 'items' WHERE 'uuid'=?", i, uuid)
+	return
 }
 
 type Frequency uint8
@@ -250,6 +204,9 @@ func GetTimeFromToken(token string) time.Time {
 	return time.Time(time.Unix(0, int64(str)))
 }
 
+// Items is a collection of Item values.
+type Items []Item
+
 func (items Items) Save(userUUID string) (Items, []Unsaved, error) {
 	savedItems := Items{}
 	unsavedItems := []Unsaved{}
@@ -262,24 +219,22 @@ func (items Items) Save(userUUID string) (Items, []Unsaved, error) {
 		var err error
 		item.UserUUID = userUUID
 		if item.Deleted {
-			err = item.delete()
+			err = item.Delete()
 		} else {
-			err = item.save()
+			err = item.Save()
 		}
 		if err != nil {
 			unsavedItems = append(unsavedItems, Unsaved{item, err})
 			logger.Log("Unsaved:", item)
-		} else {
-			item.load() //reloading item info from DB
-			savedItems = append(savedItems, item)
-			logger.Log("Saved:", item)
+			continue
 		}
+		if err = item.LoadByUUID(item.UUID); err != nil {
+			return savedItems, unsavedItems, err
+		}
+		savedItems = append(savedItems, item)
+		logger.Log("Saved:", item)
 	}
 	return savedItems, unsavedItems, nil
-}
-
-func (i *Item) load() bool {
-	return i.LoadByUUID(i.UUID)
 }
 
 func (items Items) Find(uuid string) Item {

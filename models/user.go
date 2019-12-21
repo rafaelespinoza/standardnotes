@@ -3,11 +3,9 @@ package models
 import (
 	"crypto/sha256"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/kisielk/sqlstruct"
 	"github.com/rafaelespinoza/standardfile/db"
 	"github.com/rafaelespinoza/standardfile/encryption"
 	"github.com/rafaelespinoza/standardfile/logger"
@@ -46,32 +44,6 @@ var _ db.MigratingUser = (*User)(nil)
 func (u *User) GetEmail() string   { return u.Email }
 func (u *User) GetPwNonce() string { return u.PwNonce }
 func (u *User) GetUUID() string    { return u.UUID }
-
-// LoadValue hydrates a struct from a map.
-func (u *User) LoadValue(name string, value []string) {
-	switch name {
-	case "uuid":
-		u.UUID = value[0]
-	case "email":
-		u.Email = value[0]
-	case "password":
-		u.Password = value[0]
-	case "pw_func":
-		u.PwFunc = value[0]
-	case "pw_alg":
-		u.PwAlg = value[0]
-	case "pw_auth":
-		u.PwAuth = value[0]
-	case "pw_salt":
-		u.PwSalt = value[0]
-	case "pw_cost":
-		u.PwCost, _ = strconv.Atoi(value[0])
-	case "pw_key_size":
-		u.PwKeySize, _ = strconv.Atoi(value[0])
-	case "pw_nonce":
-		u.PwNonce = value[0]
-	}
-}
 
 // UpdatePassword updates the user's password.
 func (u *User) UpdatePassword(np NewPassword) error {
@@ -126,44 +98,31 @@ func (u *User) UpdateParams(p Params) error {
 }
 
 // Exists checks if the user exists in the DB.
-func (u User) Exists() bool {
-	uuid, err := db.SelectFirst(
-		"SELECT 'uuid' FROM 'users' WHERE 'email'=?",
-		u.Email,
-	)
-
-	if err != nil {
-		logger.Log(err)
-		return false
+func (u *User) Exists() (exists bool, err error) {
+	if u.UUID == "" {
+		return
 	}
-
-	return uuid != ""
+	uuid, err := db.SelectFirst("SELECT 'uuid' FROM 'users' WHERE 'email'=?", u.Email)
+	if err != nil {
+		return
+	}
+	exists = uuid != ""
+	return
 }
 
-// LoadByUUID hydrates the user from the DB.
-func (u *User) LoadByUUID(uuid string) bool {
-	_, err := db.SelectStruct(
-		fmt.Sprintf(
-			"SELECT %s FROM 'users' WHERE 'uuid'=?",
-			sqlstruct.Columns(User{}),
-		),
-		u, uuid,
-	)
-	if err != nil {
-		logger.Log("Load err:", err)
-		return false
-	}
-
-	return true
+// LoadByUUID populates the User's fields by querying the DB.
+func (u *User) LoadByUUID(uuid string) (err error) {
+	_, err = db.SelectStruct("SELECT * FROM 'users' WHERE 'uuid'=?", u, uuid)
+	return
 }
 
 // Validate checks the jwt for a valid password.
-func (u User) Validate(password string) bool {
+func (u *User) Validate(password string) bool {
 	return password == u.Password
 }
 
-// ToJSON - return map without pw and nonce
-func (u User) ToJSON() interface{} { // TODO: rm this method
+// MakeSaferCopy duplicates the User value, but excludes some sensitive fields.
+func (u User) MakeSaferCopy() User {
 	u.Password = ""
 	u.PwNonce = ""
 	return u
@@ -188,7 +147,9 @@ func (u *User) Create() error {
 		return fmt.Errorf("Empty email or password")
 	}
 
-	if u.Exists() {
+	if exists, err := u.Exists(); err != nil {
+		return err
+	} else if exists {
 		return fmt.Errorf("Unable to register")
 	}
 
@@ -220,6 +181,62 @@ func (u *User) LoadByEmailAndPassword(email, password string) {
 	if err != nil {
 		logger.Log(err)
 	}
+}
+
+func (u *User) LoadActiveItems() (items Items, err error) {
+	err = db.Select(`
+		SELECT * FROM 'items'
+		WHERE 'user_uuid'=? AND 'content_type' IS NOT '' AND deleted = ?
+		ORDER BY 'updated_at' DESC`,
+		&items,
+		u.UUID, "SF|Extension", false,
+	)
+	return
+}
+
+func (u *User) LoadActiveExtensionItems() (items Items, err error) {
+	err = db.Select(`
+		SELECT * FROM 'items'
+		WHERE 'user_uuid'=? AND 'content_type' = ? AND deleted = ?
+		ORDER BY 'updated_at' DESC`,
+		&items,
+		u.UUID, "SF|Extension", false,
+	)
+	return
+}
+
+func (u *User) LoadItems(request SyncRequest) (items Items, cursorTime time.Time, err error) {
+	// TODO: add condition: `WHERE content_type = req.ContentType`
+	if request.CursorToken != "" {
+		date := GetTimeFromToken(request.CursorToken)
+		err = db.Select(`
+			SELECT *
+			FROM 'items'
+			WHERE 'user_uuid'=? AND 'updated_at' >= ?
+			ORDER BY 'updated_at' DESC`,
+			&items, u.UUID, date,
+		)
+
+	} else if request.SyncToken != "" {
+		date := GetTimeFromToken(request.SyncToken)
+		err = db.Select(`
+			SELECT *
+			FROM 'items'
+			WHERE 'user_uuid'=? AND 'updated_at' > ?
+			ORDER BY 'updated_at' DESC`,
+			&items, u.UUID, date,
+		)
+
+	} else {
+		err = db.Select(
+			"SELECT * FROM 'items' WHERE 'user_uuid'=? ORDER BY 'updated_at' DESC",
+			&items, u.UUID,
+		)
+		if len(items) > 0 {
+			cursorTime = items[len(items)-1].UpdatedAt
+		}
+	}
+	return items, cursorTime, err
 }
 
 // Params is the set of authentication parameters for the user.
@@ -285,73 +302,4 @@ func Hash(input string) string {
 		"",
 		-1,
 	)
-}
-
-func (u User) LoadActiveItems() (items Items, err error) {
-	err = db.Select(`
-		SELECT * FROM 'items'
-		WHERE 'user_uuid'=? AND 'content_type' IS NOT '' AND deleted = ?
-		ORDER BY 'updated_at' DESC`,
-		&items,
-		u.UUID, "SF|Extension", false,
-	)
-	return
-}
-
-func (u User) LoadActiveExtensionItems() (items Items, err error) {
-	err = db.Select(`
-		SELECT * FROM 'items'
-		WHERE 'user_uuid'=? AND 'content_type' = ? AND deleted = ?
-		ORDER BY 'updated_at' DESC`,
-		&items,
-		u.UUID, "SF|Extension", false,
-	)
-	return
-}
-
-func (u User) LoadItems(request SyncRequest) (items Items, cursorTime time.Time, err error) {
-	if request.CursorToken != "" {
-		logger.Log("loadItemsFromDate")
-		items, err = u.loadItemsFromDate(GetTimeFromToken(request.CursorToken))
-	} else if request.SyncToken != "" {
-		logger.Log("loadItemsOlder")
-		items, err = u.loadItemsOlder(GetTimeFromToken(request.SyncToken))
-	} else {
-		logger.Log("loadItems")
-		items, err = u.loadAllItems(request.Limit)
-		if len(items) > 0 {
-			cursorTime = items[len(items)-1].UpdatedAt
-		}
-	}
-	return items, cursorTime, err
-}
-
-func (u User) loadItemsFromDate(date time.Time) (items Items, err error) {
-	err = db.Select(`
-		SELECT *
-		FROM 'items'
-		WHERE 'user_uuid'=? AND 'updated_at' >= ?
-		ORDER BY 'updated_at' DESC`,
-		&items, u.UUID, date,
-	)
-	return
-}
-
-func (u User) loadItemsOlder(date time.Time) (items Items, err error) {
-	err = db.Select(`
-		SELECT *
-		FROM 'items'
-		WHERE 'user_uuid'=? AND 'updated_at' > ?
-		ORDER BY 'updated_at' DESC`,
-		&items, u.UUID, date,
-	)
-	return
-}
-
-func (u User) loadAllItems(limit int) (items Items, err error) {
-	err = db.Select(
-		"SELECT * FROM 'items' WHERE 'user_uuid'=? ORDER BY 'updated_at' DESC",
-		&items, u.UUID,
-	)
-	return
 }
