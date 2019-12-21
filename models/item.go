@@ -5,14 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
-	"log"
-	"math"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	mapset "github.com/deckarep/golang-set"
 	"github.com/rafaelespinoza/standardfile/logger"
 
 	// "github.com/kisielk/sqlstruct"
@@ -65,8 +62,6 @@ type SyncResponse struct {
 	CursorToken   string    `json:"cursor_token,omitempty"`
 	IntegrityHash string    `json:"integrity_hash"`
 }
-
-const minConflictInterval = 20.0
 
 //LoadValue - hydrate struct from map
 func (r *SyncRequest) LoadValue(name string, value []string) {
@@ -155,7 +150,7 @@ func (i *Item) delete() error {
 	)
 }
 
-func (i Item) copy() (Item, error) {
+func (i Item) Copy() (Item, error) {
 	out := uuid.NewV4()
 	i.UUID = uuid.Must(out, nil).String()
 	i.UpdatedAt = time.Now()
@@ -255,45 +250,6 @@ func GetTimeFromToken(token string) time.Time {
 	return time.Time(time.Unix(0, int64(str)))
 }
 
-func (items Items) CheckForConflicts(existing *Items) {
-	logger.Log("Saved len:", len(items))
-	logger.Log("Retrieved len:", len(*existing))
-	saved := mapset.NewSet()
-	for _, item := range items {
-		saved.Add(item.UUID)
-	}
-	retrieved := mapset.NewSet()
-	for _, item := range *existing {
-		retrieved.Add(item.UUID)
-	}
-	conflicts := saved.Intersect(retrieved)
-	logger.Log("Conflicts", conflicts)
-	// saved items take precedence, retrieved items are duplicated with a new uuid
-	for _, uuid := range conflicts.ToSlice() {
-		// if changes are greater than minConflictInterval seconds apart, create conflicted copy, otherwise discard conflicted
-		logger.Log(uuid)
-		savedCopy := items.find(uuid.(string))
-		retrievedCopy := existing.find(uuid.(string))
-
-		if savedCopy.isConflictedWith(retrievedCopy) {
-			log.Printf("Creating conflicted copy of %v\n", uuid)
-			dupe, err := retrievedCopy.copy()
-			if err != nil {
-				logger.Log(err)
-			} else {
-				*existing = append(*existing, dupe)
-			}
-		}
-		existing.delete(uuid.(string))
-	}
-}
-
-func (i Item) isConflictedWith(copy Item) bool {
-	diff := math.Abs(float64(i.UpdatedAt.Unix() - copy.UpdatedAt.Unix()))
-	logger.Log("Conflict diff, min interval:", diff, minConflictInterval)
-	return diff > minConflictInterval
-}
-
 func (items Items) Save(userUUID string) (Items, []Unsaved, error) {
 	savedItems := Items{}
 	unsavedItems := []Unsaved{}
@@ -326,7 +282,7 @@ func (i *Item) load() bool {
 	return i.LoadByUUID(i.UUID)
 }
 
-func (items Items) find(uuid string) Item {
+func (items Items) Find(uuid string) Item {
 	for _, item := range items {
 		if item.UUID == uuid {
 			return item
@@ -335,7 +291,7 @@ func (items Items) find(uuid string) Item {
 	return Item{}
 }
 
-func (items *Items) delete(uuid string) {
+func (items *Items) Delete(uuid string) {
 	position := 0
 	for i, item := range *items {
 		if item.UUID == uuid {
