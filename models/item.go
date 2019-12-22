@@ -13,8 +13,8 @@ import (
 	"github.com/rafaelespinoza/standardfile/logger"
 
 	// "github.com/kisielk/sqlstruct"
+	"github.com/google/uuid"
 	"github.com/rafaelespinoza/standardfile/db"
-	uuid "github.com/satori/go.uuid"
 )
 
 // Item - is an item type
@@ -45,7 +45,7 @@ func (i *Item) Save() error {
 
 func (i *Item) Create() error {
 	if i.UUID == "" {
-		id := uuid.NewV4()
+		id := uuid.New()
 		i.UUID = uuid.Must(id, nil).String()
 	}
 	i.CreatedAt = time.Now()
@@ -89,7 +89,7 @@ func (i *Item) Delete() error {
 }
 
 func (i Item) Copy() (Item, error) {
-	out := uuid.NewV4()
+	out := uuid.New()
 	i.UUID = uuid.Must(out, nil).String()
 	i.UpdatedAt = time.Now()
 	err := i.Create()

@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rafaelespinoza/standardfile/db"
 	"github.com/rafaelespinoza/standardfile/encryption"
 	"github.com/rafaelespinoza/standardfile/logger"
-	uuid "github.com/satori/go.uuid"
 )
 
 type User struct {
@@ -153,7 +153,7 @@ func (u *User) Create() error {
 		return fmt.Errorf("Unable to register")
 	}
 
-	id := uuid.NewV4()
+	id := uuid.New()
 	u.UUID = uuid.Must(id, nil).String()
 	u.Password = Hash(u.Password)
 	u.CreatedAt = time.Now()

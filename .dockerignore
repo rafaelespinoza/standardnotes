@@ -1,0 +1,6 @@
+*.db
+.git
+dist
+log
+pid
+standardfile

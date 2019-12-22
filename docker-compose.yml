@@ -1,7 +1,7 @@
 version: "3"
 services:
     stdfile:
-        image: tectiv3/standardfile:latest
+        image: rafaele/standardfile:latest
         container_name: standardfile
         restart: always
         volumes:
