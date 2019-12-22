@@ -223,7 +223,7 @@ func SyncItems(w http.ResponseWriter, r *http.Request) {
 		showError(w, err, http.StatusUnauthorized)
 		return
 	}
-	var request models.SyncRequest
+	var request interactors.SyncRequest
 	if err := readJSONRequest(r, &request); err != nil {
 		showError(w, err, http.StatusUnprocessableEntity)
 		return

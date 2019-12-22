@@ -30,30 +30,6 @@ type Item struct {
 	UpdatedAt   time.Time `json:"updated_at" sql:"updated_at"`
 }
 
-//SyncRequest - type for incoming sync request
-type SyncRequest struct {
-	Items            Items  `json:"items"`
-	SyncToken        string `json:"sync_token"`
-	CursorToken      string `json:"cursor_token"`
-	Limit            int    `json:"limit"`
-	ComputeIntegrity bool   `json:"compute_integrity"`
-}
-
-type Unsaved struct {
-	Item
-	error
-}
-
-//SyncResponse - type for response
-type SyncResponse struct {
-	Retrieved     Items     `json:"retrieved_items"`
-	Saved         Items     `json:"saved_items"`
-	Unsaved       []Unsaved `json:"unsaved"`
-	SyncToken     string    `json:"sync_token"`
-	CursorToken   string    `json:"cursor_token,omitempty"`
-	IntegrityHash string    `json:"integrity_hash"`
-}
-
 // Save either adds a new Item to the DB or updates an existing Item in the DB.
 func (i *Item) Save() error {
 	if i.UUID == "" {
@@ -206,45 +182,6 @@ func GetTimeFromToken(token string) time.Time {
 
 // Items is a collection of Item values.
 type Items []Item
-
-func (items Items) Save(userUUID string) (Items, []Unsaved, error) {
-	savedItems := Items{}
-	unsavedItems := []Unsaved{}
-
-	if len(items) == 0 {
-		return savedItems, unsavedItems, nil
-	}
-
-	for _, item := range items {
-		var err error
-		item.UserUUID = userUUID
-		if item.Deleted {
-			err = item.Delete()
-		} else {
-			err = item.Save()
-		}
-		if err != nil {
-			unsavedItems = append(unsavedItems, Unsaved{item, err})
-			logger.Log("Unsaved:", item)
-			continue
-		}
-		if err = item.LoadByUUID(item.UUID); err != nil {
-			return savedItems, unsavedItems, err
-		}
-		savedItems = append(savedItems, item)
-		logger.Log("Saved:", item)
-	}
-	return savedItems, unsavedItems, nil
-}
-
-func (items Items) Find(uuid string) Item {
-	for _, item := range items {
-		if item.UUID == uuid {
-			return item
-		}
-	}
-	return Item{}
-}
 
 func (items *Items) Delete(uuid string) {
 	position := 0

@@ -1,21 +1,74 @@
 package interactors
 
 import (
-	"fmt"
+	"encoding/json"
+	"errors"
 	"log"
 	"math"
+	"strconv"
 	"time"
 
-	mapset "github.com/deckarep/golang-set"
 	"github.com/rafaelespinoza/standardfile/jobs"
-	"github.com/rafaelespinoza/standardfile/logger"
 	"github.com/rafaelespinoza/standardfile/models"
 )
 
+// SyncRequest is a collection of named parameters for an incoming sync request.
+type SyncRequest struct {
+	Items            models.Items `json:"items"`
+	SyncToken        string       `json:"sync_token"`
+	CursorToken      string       `json:"cursor_token"`
+	ContentType      string       `json:"content_type"`
+	Limit            int          `json:"limit"`
+	ComputeIntegrity bool         `json:"compute_integrity"`
+}
+
+// A SyncResponse is the output of an incoming sync request.
+type SyncResponse struct {
+	Retrieved     models.Items   `json:"retrieved_items"`
+	Saved         models.Items   `json:"saved_items"`
+	Conflicts     []ItemConflict `json:"conflicts"`
+	SyncToken     string         `json:"sync_token"`
+	CursorToken   string         `json:"cursor_token,omitempty"`
+	IntegrityHash string         `json:"integrity_hash"`
+}
+
+// LoadValue - hydrate struct from map
+func (r *SyncRequest) LoadValue(name string, value []string) { // TODO: rm this method
+	switch name {
+	case "items":
+		r.Items = models.Items{}
+	case "sync_token":
+		r.SyncToken = value[0]
+	case "cursor_token":
+		r.CursorToken = value[0]
+	case "limit":
+		r.Limit, _ = strconv.Atoi(value[0])
+	}
+}
+
 // SyncUserItems manages user item syncs.
-func SyncUserItems(user models.User, req models.SyncRequest) (res *models.SyncResponse, err error) {
-	if res, err = syncUserItems(user, req); err != nil {
+func SyncUserItems(user models.User, req SyncRequest) (res *SyncResponse, err error) {
+	var cursorTime time.Time
+
+	if req.Limit < 1 {
+		req.Limit = 100000
+	}
+	res = &SyncResponse{}
+
+	if err = res.loadSyncItems(user, req); err != nil {
 		return
+	}
+	if len(res.Retrieved) > 0 {
+		cursorTime = res.Retrieved[len(res.Retrieved)-1].UpdatedAt
+	}
+	if !cursorTime.IsZero() {
+		res.CursorToken = models.GetTokenFromTime(cursorTime)
+	}
+
+	if len(res.Saved) < 1 {
+		res.SyncToken = models.GetTokenFromTime(time.Now())
+	} else {
+		res.SyncToken = models.GetTokenFromTime(res.Saved[0].UpdatedAt)
 	}
 
 	err = enqueueRealtimeExtensionJobs(user, req.Items)
@@ -37,128 +90,50 @@ func SyncUserItems(user models.User, req models.SyncRequest) (res *models.SyncRe
 	return
 }
 
-func syncUserItems(user models.User, req models.SyncRequest) (res *models.SyncResponse, err error) {
-	res = &models.SyncResponse{
-		Retrieved:   models.Items{},
-		Saved:       models.Items{},
-		Unsaved:     []models.Unsaved{},
-		SyncToken:   models.GetTokenFromTime(time.Now()),
-		CursorToken: "",
+// loadSyncItems does a whole lot of stuff, but the TLDR is that it loads the
+// user's items from the DB, compares those items against the incoming items
+// from the request, then either creates new items or updates the existing
+// items to the DB. Conflicting items cannot be saved to the DB, so they're
+// collected in a separate list and sent back to the client.
+func (r *SyncResponse) loadSyncItems(user models.User, req SyncRequest) (err error) {
+	var retrieved models.Items
+	var saved models.Items
+	var conflicts []ItemConflict
+
+	if retrieved, err = user.LoadItems(
+		req.CursorToken,
+		req.SyncToken,
+		req.ContentType,
+	); err != nil {
+		return
 	}
+	r.Retrieved = retrieved
 
-	if req.Limit < 1 {
-		req.Limit = 100000
-	}
-	var cursorTime time.Time
-
-	logger.Log("Load items")
-	res.Retrieved, cursorTime, err = user.LoadItems(req)
-
-	if err != nil {
-		return res, err
-	}
-	if !cursorTime.IsZero() {
-		res.CursorToken = models.GetTokenFromTime(cursorTime)
-	}
-	logger.Log("Save incoming items", req)
-	res.Saved, res.Unsaved, err = req.Items.Save(user.UUID)
-	if err != nil {
-		return res, err
-	}
-	if len(res.Saved) > 0 {
-		res.SyncToken = models.GetTokenFromTime(res.Saved[0].UpdatedAt)
-		logger.Log("Conflicts check")
-		checkConflicts(res.Saved, &res.Retrieved)
-	}
-	return
-}
-
-type itemSyncResult struct {
-	saved     []models.Item
-	conflicts []conflictedItem
-}
-
-type itemConflict uint8
-
-const (
-	_ItemConflictUnknown itemConflict = iota
-	_ItemConflictUUID
-	_ItemConflictSync
-)
-
-func (c itemConflict) String() string {
-	return [...]string{"unknown_conflict", "uuid_conflict", "sync_conflict"}[c]
-}
-
-type conflictedItem interface {
-	Type() itemConflict
-}
-
-type uuidConflict struct {
-	UnsavedItem models.Item `json:"unsaved_item"`
-}
-
-var _ conflictedItem = (*uuidConflict)(nil)
-
-func (c *uuidConflict) Type() itemConflict { return _ItemConflictUUID }
-
-type syncConflict struct {
-	ServerItem models.Item `json:"server_item"`
-}
-
-var _ conflictedItem = (*syncConflict)(nil)
-
-func (c *syncConflict) Type() itemConflict { return _ItemConflictSync }
-
-// saveUserItems is a remake of a method in the Rails syncing-server, at:
-// https://github.com/standardnotes/syncing-server/blob/master/lib/sync_engine/2019_05_20/sync_manager.rb#L37
-func saveUserItems(user models.User, req models.SyncRequest, retrievedItems models.Items) (out *itemSyncResult, err error) {
-	saved := make([]models.Item, 0)
-	conflicts := make([]conflictedItem, 0)
 	for _, incomingItem := range req.Items {
-		var alreadyExists bool
-		var item *models.Item // will either be an existing item or new item (incomingItem)
-		if alreadyExists, err = incomingItem.Exists(); err != nil {
-			conflicts = append(conflicts, &uuidConflict{UnsavedItem: incomingItem})
+		var item *models.Item
+		// Probably don't need to go all the way back to the DB to check for
+		// conflicts since the items ought to be retrieved by this point.
+		// However, this may not be true if there's pagination. For now, just go
+		// back to the DB until there's more knowledge.
+		item, err = checkItemConflicts(incomingItem)
+		if err == _ErrConflictingUUID {
+			conflicts = append(conflicts, &uuidConflict{item: incomingItem})
 			continue
-		} else if alreadyExists {
-			// hydrate item fields with DB values
-			if err = item.LoadByUUID(incomingItem.UUID); err != nil {
-				return
-			}
-		} else {
-			// hydrate item fields incoming parameters
-			item = &incomingItem
-		}
-		incomingUpdatedAt := incomingItem.UpdatedAt
-
-		if alreadyExists {
-			var saveIncoming bool
-			oursUpdatedAt := incomingItem.UpdatedAt
-			if incomingUpdatedAt.Before(oursUpdatedAt) {
-				// probably stale data
-				saveIncoming = incomingUpdatedAt.Sub(oursUpdatedAt) < _MinConflictInterval
-			} else if oursUpdatedAt.Before(incomingUpdatedAt) {
-				saveIncoming = incomingUpdatedAt.Sub(oursUpdatedAt) < _MinConflictInterval
-			} else {
-				saveIncoming = true
-			}
-
-			if !saveIncoming {
-				// don't save the incoming value, don't send it back to client.
-				// The item found by the server is likely the same as an item in
-				// retrievedItems. To prevent it from being included in a
-				// subsequent sync, set up serialization of the in-memory copy.
-				conflicts = append(conflicts, &syncConflict{ServerItem: *item})
-				retrievedItems.Delete(item.UUID)
-				continue
-			}
-		}
-
-		if err = item.Update(); err != nil {
+		} else if err == _ErrConflictingSync {
+			// Don't save the incoming value, add to the list of conflicted
+			// items so the client doesn't try to resync it.
+			conflicts = append(conflicts, &syncConflict{item: *item})
+			r.Retrieved.Delete(item.UUID) // Exclude item from subsequent syncs.
+			continue
+		} else if err != nil {
 			return
 		}
-
+		// Can *probably* do Save or Delete instead of potentially doing both.
+		// But before doing that, consider if there are other things that need
+		// to be saved before it's marked as "deleted".
+		if err = item.Save(); err != nil {
+			return
+		}
 		if item.Deleted {
 			if err = item.Delete(); err != nil {
 				return
@@ -166,11 +141,102 @@ func saveUserItems(user models.User, req models.SyncRequest, retrievedItems mode
 		}
 		saved = append(saved, *item)
 	}
-	out = &itemSyncResult{
-		saved:     saved,
-		conflicts: conflicts,
-	}
+
+	r.Saved = saved
+	r.Conflicts = conflicts
 	return
+}
+
+const _MinConflictInterval = 1 * time.Second
+
+var (
+	_ErrConflictingSync = errors.New("sync_conflict")
+	// _ErrConflictingUUID signals a UUID conflict, this might happen if a user
+	// is importing data from another account.
+	_ErrConflictingUUID = errors.New("uuid_conflict")
+)
+
+// checkItemConflicts first checks if the incomingItem is in the DB. If it's not
+// in the database, then it returns a pointer to the incoming Item. If it is,
+// then it compares timestamps on the item found in the DB and the incomingItem.
+// If they're the same, then assume both items are identical. If different
+// (outside of a certain threshold), then consider it a sync conflict.
+func checkItemConflicts(incomingItem models.Item) (item *models.Item, err error) {
+	var alreadyExists bool
+	if alreadyExists, err = incomingItem.Exists(); err != nil {
+		// probably importing notes from another account? This is translated
+		// from the ruby implementation, and I don't know how they decided that
+		// any error here would be considered a conflicting UUID...
+		err = _ErrConflictingUUID
+		return
+	} else if !alreadyExists {
+		// hydrate item fields with incoming parameters
+		item = &incomingItem
+		return
+	} else {
+		// hydrate item fields with DB values
+		if err = item.LoadByUUID(incomingItem.UUID); err != nil {
+			return
+		}
+	}
+
+	// By this point, we know the item exists in the DB. Time to look more into
+	// it and decide if it's a conflict.
+
+	var saveIncoming bool
+	theirsUpdated := incomingItem.UpdatedAt
+	oursUpdated := item.UpdatedAt
+	diff := theirsUpdated.Sub(oursUpdated) * time.Second
+
+	if diff == 0 {
+		saveIncoming = true
+	} else {
+		// Probably stale data (when diff < 0). Or less likely, the data was
+		// somehow manipulated (when diff > 0).
+		saveIncoming = math.Abs(float64(diff)) < float64(_MinConflictInterval)
+	}
+
+	if !saveIncoming {
+		err = _ErrConflictingSync
+		return
+	}
+
+	return
+}
+
+type ItemConflict interface {
+	Item() models.Item
+	Conflict() error
+}
+
+type uuidConflict struct {
+	item models.Item
+}
+
+var _ ItemConflict = (*uuidConflict)(nil)
+
+func (c *uuidConflict) Item() models.Item { return c.item }
+func (c *uuidConflict) Conflict() error   { return _ErrConflictingUUID }
+func (c *uuidConflict) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]interface{}{
+		"unsaved_item": c.Item(),
+		"type":         c.Conflict().Error(),
+	})
+}
+
+type syncConflict struct {
+	item models.Item
+}
+
+var _ ItemConflict = (*syncConflict)(nil)
+
+func (c *syncConflict) Item() models.Item { return c.item }
+func (c *syncConflict) Conflict() error   { return _ErrConflictingSync }
+func (c *syncConflict) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]interface{}{
+		"server_item": c.Item(),
+		"type":        c.Conflict().Error(),
+	})
 }
 
 func enqueueRealtimeExtensionJobs(user models.User, items models.Items) (err error) {
@@ -238,45 +304,4 @@ func enqueueDailyBackupExtensionJobs(items models.Items) (err error) {
 		}
 	}
 	return
-}
-
-const _MinConflictInterval = 20.0
-
-func checkConflicts(items models.Items, existing *models.Items) {
-	logger.Log(fmt.Sprintf("saved len: %d, retrieved len: %d", len(items), len(*existing)))
-	saved := mapset.NewSet()
-	for _, item := range items {
-		saved.Add(item.UUID)
-	}
-	retrieved := mapset.NewSet()
-	for _, item := range *existing {
-		retrieved.Add(item.UUID)
-	}
-	conflicts := saved.Intersect(retrieved)
-	logger.Log("conflicts", conflicts)
-
-	// saved items take precedence, retrieved items are duplicated with new uuid
-	for _, uuid := range conflicts.ToSlice() {
-		// if changes are greater than _MinConflictInterval seconds apart, create
-		// conflicted copy, otherwise discard conflicted
-		savedCopy := items.Find(uuid.(string))
-		retrievedCopy := existing.Find(uuid.(string))
-
-		diff := math.Abs(float64(
-			savedCopy.UpdatedAt.Unix() - retrievedCopy.UpdatedAt.Unix(),
-		))
-		logger.Log(fmt.Sprintf(
-			"conflicted diff: %f, limit: %f", diff, _MinConflictInterval,
-		))
-		if diff > _MinConflictInterval { // is there a conflict?
-			log.Printf("Creating conflicted copy of %v\n", uuid)
-			dupe, err := retrievedCopy.Copy()
-			if err != nil {
-				logger.Log(err)
-			} else {
-				*existing = append(*existing, dupe)
-			}
-		}
-		existing.Delete(uuid.(string))
-	}
 }

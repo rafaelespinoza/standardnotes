@@ -205,10 +205,10 @@ func (u *User) LoadActiveExtensionItems() (items Items, err error) {
 	return
 }
 
-func (u *User) LoadItems(request SyncRequest) (items Items, cursorTime time.Time, err error) {
+func (u *User) LoadItems(cursorToken, syncToken, contentType string) (items Items, err error) {
 	// TODO: add condition: `WHERE content_type = req.ContentType`
-	if request.CursorToken != "" {
-		date := GetTimeFromToken(request.CursorToken)
+	if cursorToken != "" {
+		date := GetTimeFromToken(cursorToken)
 		err = db.Select(`
 			SELECT *
 			FROM 'items'
@@ -217,8 +217,8 @@ func (u *User) LoadItems(request SyncRequest) (items Items, cursorTime time.Time
 			&items, u.UUID, date,
 		)
 
-	} else if request.SyncToken != "" {
-		date := GetTimeFromToken(request.SyncToken)
+	} else if syncToken != "" {
+		date := GetTimeFromToken(syncToken)
 		err = db.Select(`
 			SELECT *
 			FROM 'items'
@@ -232,11 +232,8 @@ func (u *User) LoadItems(request SyncRequest) (items Items, cursorTime time.Time
 			"SELECT * FROM 'items' WHERE 'user_uuid'=? ORDER BY 'updated_at' DESC",
 			&items, u.UUID,
 		)
-		if len(items) > 0 {
-			cursorTime = items[len(items)-1].UpdatedAt
-		}
 	}
-	return items, cursorTime, err
+	return
 }
 
 // Params is the set of authentication parameters for the user.
