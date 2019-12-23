@@ -1,75 +1,125 @@
 package api
 
 import (
+	"fmt"
+	"io"
+	"net"
+
+	"log"
 	"net/http"
 	"os"
 	"strconv"
 
+	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/rafaelespinoza/standardfile/config"
+	"github.com/rafaelespinoza/standardfile/db"
 )
 
-const (
-	_CertFile string = "path/to/certFile"
-	_KeyFile  string = "path/to/keyFile"
-)
+var _Work chan bool
 
-func RunServer(conf config.Config) {
-	server := newServer(conf)
+func init() {
+	_Work = make(chan bool)
+}
 
-	if os.Getenv("ENV") != "production" {
-		server.ListenAndServe()
-		return
+// Shutdown closes the server's internal channel.
+func Shutdown() {
+	close(_Work)
+}
+
+// Serve is the main workhorse of this package. It maps request routes to
+// handlers and listens on the configured socket.
+func Serve(cfg config.Config) {
+	db.Init(cfg.DB)
+	log.Println("Started StandardFile Server", config.Metadata.Version)
+	log.Println("Loaded config:", config.Metadata.LoadedConfig)
+
+	if cfg.Debug {
+		log.Println("Debug on")
 	}
 
-	server.ListenAndServeTLS(_CertFile, _KeyFile)
+	router := makeRouter(cfg)
+
+	defer func(cfg config.Config) {
+		if len(cfg.Socket) != 0 {
+			os.Remove(cfg.Socket)
+		}
+	}(cfg)
+
+	// listen
+	go func(r http.Handler, cfg config.Config) {
+		if len(cfg.Socket) == 0 {
+			log.Println("Listening on port " + strconv.Itoa(cfg.Port))
+			err := http.ListenAndServe(":"+strconv.Itoa(cfg.Port), r)
+			if err != nil {
+				log.Println(err)
+			}
+		} else {
+			os.Remove(cfg.Socket)
+			unixListener, err := net.Listen("unix", cfg.Socket)
+			if err != nil {
+				panic(err)
+			}
+			server := http.Server{
+				Handler: r,
+			}
+			log.Println("Listening on socket " + cfg.Socket)
+			server.Serve(unixListener)
+		}
+	}(
+		router,
+		cfg,
+	)
+	<-_Work
+	log.Println("Server stopped")
+	os.Exit(0)
 }
 
-var itemsHandlers struct {
-	Sync   http.Handler
-	Backup http.Handler
-	List   http.Handler
-	Show   http.Handler
-	Create http.Handler
-	Update http.Handler
-	Delete http.Handler
-}
-
-var authHandlers struct {
-	Params         http.Handler
-	UpdateUser     http.Handler
-	Login          http.Handler
-	ChangePassword http.Handler
-	RegisterUser   http.Handler
-}
-
-// newServer sets up an http.Server with request handlers.
-func newServer(conf config.Config) *http.Server {
+// makeRouter sets up an http.Server with request handlers.
+func makeRouter(conf config.Config) http.Handler {
 	router := mux.NewRouter()
-	// Main
+
+	// routes
 	router.HandleFunc("/", Dashboard).Methods(http.MethodGet)
 
-	// Items
-	router.HandleFunc("/items/sync", itemsHandlers.Sync.ServeHTTP).Methods(http.MethodPost)
-	router.HandleFunc("/items/backup", itemsHandlers.Backup.ServeHTTP).Methods(http.MethodPost)
-	router.HandleFunc("/items", itemsHandlers.List.ServeHTTP).Methods(http.MethodGet)
-	router.HandleFunc("/items/{id}", itemsHandlers.Show.ServeHTTP).Methods(http.MethodGet)
-	router.HandleFunc("/items", itemsHandlers.Create.ServeHTTP).Methods(http.MethodPost)
-	router.HandleFunc("/items/{id}", itemsHandlers.Update.ServeHTTP).Methods(http.MethodPatch)
-	router.HandleFunc("/items/{id}", itemsHandlers.Delete.ServeHTTP).Methods(http.MethodDelete)
+	router.HandleFunc("/items/sync", itemsHandlers.SyncItems).Methods(http.MethodPost)
+	router.HandleFunc("/items/backup", itemsHandlers.BackupItems).Methods(http.MethodPost)
 
-	// Auth
-	router.HandleFunc("/auth/params", authHandlers.Params.ServeHTTP).Methods(http.MethodGet)
-	router.HandleFunc("/auth/update", authHandlers.UpdateUser.ServeHTTP).Methods(http.MethodPost)
-	router.HandleFunc("/auth/change_pw", authHandlers.ChangePassword.ServeHTTP).Methods(http.MethodPost)
-	router.HandleFunc("/auth/sign_in", authHandlers.Login.ServeHTTP).Methods(http.MethodPost)
-	router.HandleFunc("/auth/sign_in.json", authHandlers.Login.ServeHTTP).Methods(http.MethodPost)
+	router.HandleFunc("/auth/params", authHandlers.GetParams).Methods(http.MethodGet)
+	router.HandleFunc("/auth/update", authHandlers.UpdateUser).Methods(http.MethodPost)
+	router.HandleFunc("/auth/change_pw", authHandlers.ChangePassword).Methods(http.MethodPost)
+	router.HandleFunc("/auth/sign_in", authHandlers.LoginUser).Methods(http.MethodPost)
+	router.HandleFunc("/auth/sign_in.json", authHandlers.LoginUser).Methods(http.MethodPost)
 	if !conf.NoReg {
-		router.HandleFunc("/auth", authHandlers.RegisterUser.ServeHTTP).Methods(http.MethodPost)
+		router.HandleFunc("/auth", authHandlers.RegisterUser).Methods(http.MethodPost)
 	}
 
-	return &http.Server{
+	// middleware
+	router.Use(func(next http.Handler) http.Handler {
+		return handlers.CustomLoggingHandler(
+			os.Stdout,
+			next,
+			func(w io.Writer, p handlers.LogFormatterParams) {
+				fmt.Fprintf(
+					w,
+					"%s %d %s %q %d %d\n",
+					p.TimeStamp.UTC().Format("20060102150405.000"),
+					p.StatusCode,
+					p.Request.Method,
+					p.Request.RequestURI,
+					p.Request.ContentLength,
+					p.Size,
+				)
+			},
+		)
+	})
+	if conf.UseCORS {
+		router.Use(mux.CORSMethodMiddleware(router))
+	}
+
+	server := http.Server{
 		Addr:    conf.Host + ":" + strconv.Itoa(conf.Port),
 		Handler: router,
 	}
+	return server.Handler
 }

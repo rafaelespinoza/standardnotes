@@ -92,6 +92,21 @@ func Dashboard(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Dashboard. Server version: " + config.Metadata.Version))
 }
 
+// authHandlers groups http handlers for "/auth/" routes.
+var authHandlers = struct {
+	ChangePassword http.HandlerFunc
+	UpdateUser     http.HandlerFunc
+	RegisterUser   http.HandlerFunc
+	LoginUser      http.HandlerFunc
+	GetParams      http.HandlerFunc
+}{
+	ChangePassword: ChangePassword,
+	UpdateUser:     UpdateUser,
+	RegisterUser:   RegisterUser,
+	LoginUser:      LoginUser,
+	GetParams:      GetParams,
+}
+
 // ChangePassword is the change password handler.
 // POST /auth/change_pw
 func ChangePassword(w http.ResponseWriter, r *http.Request) {
@@ -150,9 +165,9 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusAccepted, nil)
 }
 
-// Registration is the registration handler.
+// RegisterUser is the registration handler.
 // POST /auth/register
-func Registration(w http.ResponseWriter, r *http.Request) {
+func RegisterUser(w http.ResponseWriter, r *http.Request) {
 	var user = models.NewUser()
 	if err := readJSONRequest(r, &user); err != nil {
 		showError(w, err, http.StatusUnprocessableEntity)
@@ -171,9 +186,9 @@ func Registration(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
-// Login handles sign in.
+// LoginUser handles sign in.
 // POST /auth/sign_in
-func Login(w http.ResponseWriter, r *http.Request) {
+func LoginUser(w http.ResponseWriter, r *http.Request) {
 	var user = models.NewUser()
 	if err := readJSONRequest(r, &user); err != nil {
 		showError(w, err, http.StatusUnprocessableEntity)
@@ -213,6 +228,15 @@ func GetParams(w http.ResponseWriter, r *http.Request) {
 	content, _ := json.MarshalIndent(params, "", "  ")
 	logger.Log("Response:", string(content))
 	writeJSONResponse(w, http.StatusOK, params)
+}
+
+// itemsHandlers groups http handlers for "/items/" routes.
+var itemsHandlers = struct {
+	SyncItems   http.HandlerFunc
+	BackupItems http.HandlerFunc
+}{
+	SyncItems:   SyncItems,
+	BackupItems: BackupItems,
 }
 
 // SyncItems is the items sync handler.

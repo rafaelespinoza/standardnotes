@@ -1,90 +1,175 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
-	"runtime"
-	"strconv"
+	"sort"
+	"strings"
 	"syscall"
 
 	"github.com/rafaelespinoza/standardfile/api"
 	"github.com/rafaelespinoza/standardfile/config"
-	"github.com/rafaelespinoza/standardfile/db"
 	"github.com/sevlyar/go-daemon"
 )
 
+// Args is a collection of named variables that are set from CLI flags or the
+// config file. Values set from CLI flags override values in the config file.
 type Args struct {
-	signal  bool
+	config string
+	stop   bool
+
+	daemon  bool
+	db      string
+	debug   bool
+	host    string
 	migrate bool
-	ver     bool
-	cfgPath string
+	noReg   bool
+	port    int
+	socket  string
+	useCors bool
+}
+
+func init() {
+	flag.Usage = func() {
+		cmds := make([]string, 0)
+		for cmd := range Commands {
+			cmds = append(
+				cmds,
+				fmt.Sprintf("%-20s\t%-40s", cmd, Commands[cmd].description),
+			)
+		}
+		sort.Strings(cmds)
+		fmt.Fprintf(flag.CommandLine.Output(), `Usage:
+	%s [options] command
+
+Description:
+
+	standardnotes backend API, golang implementation.
+
+	https://github.com/rafaelespinoza/standardfile
+
+Commands:
+
+	%v
+`, _Bin, strings.Join(cmds, "\n\t"))
+
+		printFlagDefaults(flag.CommandLine)
+	}
+
+	flag.StringVar(&_Args.config, "config", "./config/standardfile.json", "config file location")
+	// The following flags can also be set with a config file, but are
+	// overridden with a CLI flag.
+	flag.StringVar(&_Args.db, "db", "sf.db", "path to database (sqlite3) file")
+	flag.BoolVar(&_Args.debug, "debug", false, "run server in debug mode")
+	flag.StringVar(&_Args.host, "host", "localhost", "server hostname")
+	flag.BoolVar(&_Args.noReg, "noreg", false, "disable user registration")
+	flag.IntVar(&_Args.port, "port", 8888, "server port")
+	flag.StringVar(&_Args.socket, "socket", "", "server socket")
+	flag.BoolVar(&_Args.useCors, "cors", false, "use CORS in server")
 }
 
 var (
 	_LoadedConfig = "using flags"
-	_Args         = Args{}
-	// _Version string will be set by linker
+	// _Args is the shared set named values.
+	_Args = Args{}
+	// _Bin is the name of the binary.
+	_Bin = os.Args[0]
+	// _Version will be set by linker.
 	_Version = "dev"
-	// _BuildTime string will be set by linker
+	// _BuildTime will be set by linker.
 	_BuildTime = "N/A"
 )
 
-func init() {
-	flag.BoolVar(&_Args.signal, "stop", false, `shutdown server`)
-	flag.BoolVar(&_Args.migrate, "migrate", false, `perform DB migrations`)
-	flag.BoolVar(&_Args.ver, "v", false, `show version`)
-	flag.StringVar(&_Args.cfgPath, "c", ".", `config file location`)
-	flag.StringVar(&_Args.cfgPath, "config", ".", `config file location`)
+func initCommand(positionalArgs []string, a *Args) (cmd *Command, err error) {
+	if len(positionalArgs) == 0 || positionalArgs[0] == "help" {
+		err = flag.ErrHelp
+		return
+	} else if c, ok := Commands[strings.ToLower(positionalArgs[0])]; !ok {
+		err = fmt.Errorf("unknown command %q", positionalArgs[0])
+		return
+	} else {
+		cmd = c
+	}
+
+	if data, ierr := ioutil.ReadFile(a.config); ierr != nil {
+		err = ierr
+		return
+	} else if ierr = json.Unmarshal(data, &config.Conf); ierr != nil {
+		err = ierr
+		return
+	}
+	if a.useCors {
+		config.Conf.UseCORS = true
+	}
+	if a.debug {
+		config.Conf.Debug = true
+	}
+	if a.db != "" {
+		config.Conf.DB = a.db
+	} else if config.Conf.DB == "" {
+		config.Conf.DB = "sf.db"
+	}
+	if a.noReg {
+		config.Conf.NoReg = true
+	}
+	if a.port != 0 {
+		config.Conf.Port = a.port
+	}
+	if a.socket != "" {
+		config.Conf.Socket = a.socket
+	}
+
+	subflags := cmd.setup(a)
+	if err = subflags.Parse(positionalArgs[1:]); err != nil {
+		return
+	}
+	return
 }
 
 func main() {
 	flag.Parse()
-	if err := config.InitConf(_Args.cfgPath); err != nil {
-		log.Println(err)
+	var cmd *Command
+	var err error
+	if cmd, err = initCommand(flag.Args(), &_Args); cmd == nil {
+		// either asked for help or asked for unknown command.
+		flag.Usage()
+		fmt.Println(err)
+		os.Exit(1)
+	} else if err != nil {
+		fmt.Println(err)
 		os.Exit(1)
 	}
 
-	conf := config.Conf
-
-	if _Args.ver {
-		socket := "no"
-		if len(conf.Socket) > 0 {
-			socket = conf.Socket
+	if !cmd.api {
+		if err := cmd.run(&_Args); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
 		}
-		fmt.Println(`        Version:           ` + _Version + `
-        Built:             ` + _BuildTime + `
-        Go Version:        ` + runtime.Version() + `
-        OS/Arch:           ` + runtime.GOOS + "/" + runtime.GOARCH + `
-        Loaded Config:     ` + _LoadedConfig + `
-        No Registrations:  ` + strconv.FormatBool(conf.NoReg) + `
-        CORS Enabled:      ` + strconv.FormatBool(conf.UseCORS) + `
-        Run in Foreground: ` + strconv.FormatBool(conf.Foreground) + `
-        Webserver Port:    ` + strconv.Itoa(conf.Port) + `
-        Socket:            ` + socket + `
-        DB Path:           ` + conf.DB + `
-        Debug:             ` + strconv.FormatBool(conf.Debug))
 		return
 	}
 
-	if _Args.migrate {
-		db.Migrate(conf)
+	daemon.AddCommand(
+		daemon.BoolFlag(&_Args.stop),
+		syscall.SIGTERM,
+		func(os.Signal) error {
+			api.Shutdown()
+			return daemon.ErrStop
+		},
+	)
+
+	if !_Args.stop && !_Args.daemon {
+		// run server in foreground
+		api.Serve(config.Conf)
 		return
 	}
 
-	if conf.Port == 0 {
-		conf.Port = 8888
-	}
+	// run server as background daemon.
 
-	if conf.Foreground {
-		api.Serve(conf)
-		return
-	}
-
-	daemon.AddCommand(daemon.BoolFlag(&_Args.signal), syscall.SIGTERM, termHandler)
-
-	cntxt := &daemon.Context{
+	ctx := &daemon.Context{
 		PidFileName: "pid",
 		PidFilePerm: 0644,
 		LogFileName: "log",
@@ -95,7 +180,7 @@ func main() {
 	}
 
 	if len(daemon.ActiveFlags()) > 0 {
-		d, err := cntxt.Search()
+		d, err := ctx.Search()
 		if err != nil {
 			log.Fatalln("Unable send signal to the daemon:", err)
 		}
@@ -104,23 +189,16 @@ func main() {
 		return
 	}
 
-	d, err := cntxt.Reborn()
-	if err != nil {
+	if proc, err := ctx.Reborn(); err != nil {
 		log.Fatalln(err)
-	}
-	if d != nil {
+	} else if proc != nil {
 		return
 	}
-	defer cntxt.Release()
 
-	go api.Serve(conf)
+	defer ctx.Release()
+	go api.Serve(config.Conf)
 
 	if err := daemon.ServeSignals(); err != nil {
 		log.Println("Error:", err)
 	}
-}
-
-func termHandler(sig os.Signal) error {
-	api.Shutdown()
-	return daemon.ErrStop
 }

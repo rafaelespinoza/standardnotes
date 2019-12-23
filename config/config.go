@@ -1,39 +1,21 @@
 package config
 
-import (
-	"encoding/json"
-	"io/ioutil"
-)
-
 type Config struct {
-	DB         string `json:"db"`
-	Host       string `json:"host"`
-	Port       int    `json:"port"`
-	Socket     string `json:"socket"`
-	NoReg      bool   `json:"noreg"`
-	Debug      bool   `json:"debug"`
-	Foreground bool   `json:"foreground"`
-	UseCORS    bool   `json:"cors"`
+	DB      string `json:"db"`
+	Debug   bool   `json:"debug"`
+	Host    string `json:"host"`
+	NoReg   bool   `json:"noreg"`
+	Port    int    `json:"port"`
+	Socket  string `json:"socket"`
+	UseCORS bool   `json:"cors"`
 }
 
 var Conf = Config{
-	DB:         "sf.db",
-	Port:       8888,
-	Debug:      false,
-	NoReg:      false,
-	Foreground: false,
-	UseCORS:    false,
-}
-
-func InitConf(path string) (err error) {
-	if data, ierr := ioutil.ReadFile(path); ierr != nil {
-		err = ierr
-		return
-	} else if ierr = json.Unmarshal(data, &Conf); ierr != nil {
-		err = ierr
-		return
-	}
-	return
+	DB:      "sf.db",
+	Debug:   false,
+	NoReg:   false,
+	Port:    8888,
+	UseCORS: false,
 }
 
 var Metadata = struct {

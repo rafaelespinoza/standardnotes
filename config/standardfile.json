@@ -1,0 +1,8 @@
+{
+    "cors": false,
+    "db": "sf.db",
+    "debug": false,
+    "noreg": false,
+    "port": 8888,
+    "socket": ""
+}
