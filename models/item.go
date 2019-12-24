@@ -50,7 +50,7 @@ func (i *Item) Create() error {
 	}
 	i.CreatedAt = time.Now()
 	i.UpdatedAt = time.Now()
-	logger.Log("Create:", i.UUID)
+	logger.LogIfDebug("Create:", i.UUID)
 	return db.Query(`
 		INSERT INTO 'items' (
 			'uuid', 'user_uuid', content, content_type, enc_item_key, auth_hash, deleted, created_at, updated_at
@@ -61,7 +61,7 @@ func (i *Item) Create() error {
 
 func (i *Item) Update() error {
 	i.UpdatedAt = time.Now()
-	logger.Log("Update:", i.UUID)
+	logger.LogIfDebug("Update:", i.UUID)
 	return db.Query(`
 		UPDATE 'items'
 		SET 'content'=?, 'enc_item_key'=?, 'auth_hash'=?, 'deleted'=?, 'updated_at'=?
@@ -94,7 +94,7 @@ func (i Item) Copy() (Item, error) {
 	i.UpdatedAt = time.Now()
 	err := i.Create()
 	if err != nil {
-		logger.Log(err)
+		logger.LogIfDebug(err)
 		return Item{}, err
 	}
 	return i, nil
@@ -166,13 +166,13 @@ func GetTokenFromTime(date time.Time) string {
 func GetTimeFromToken(token string) time.Time {
 	decoded, err := base64.URLEncoding.DecodeString(token)
 	if err != nil {
-		logger.Log(err)
+		logger.LogIfDebug(err)
 		return time.Now()
 	}
 	parts := strings.Split(string(decoded), ":")
 	str, err := strconv.ParseUint(parts[1], 10, 64)
 	if err != nil {
-		logger.Log(err)
+		logger.LogIfDebug(err)
 		return time.Now()
 	}
 	// TODO: output "version" 1, 2 differently. See

@@ -3,7 +3,6 @@ package jobs
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/rafaelespinoza/standardfile/db"
@@ -15,8 +14,6 @@ type MailerJobParams struct {
 }
 
 func PerformMailerJob(params MailerJobParams) (err error) {
-	// TODO: send user an email with an attachment, a JSON file listing all
-	// undeleted items.
 	var user models.User
 	var contents struct {
 		Items      models.Items
@@ -56,6 +53,6 @@ func PerformMailerJob(params MailerJobParams) (err error) {
 	contents.AuthParams = models.MakeAuthParams(user)
 	attachment.Filename = fmt.Sprintf("SN-Data-%s.txt", time.Now().Format("20060102015405"))
 	attachment.MimeType = "application/json"
-	log.Printf("TODO: send email to user with attachment\n")
+	// TODO: send email to user with attached JSON file.
 	return
 }

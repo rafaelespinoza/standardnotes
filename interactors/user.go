@@ -51,7 +51,7 @@ func LoginUser(u models.User, email, password string) (token string, err error) 
 	u.LoadByEmailAndPassword(email, password)
 
 	if u.UUID == "" {
-		err = fmt.Errorf("Invalid email or password")
+		err = fmt.Errorf("invalid email or password")
 		return
 	}
 
@@ -83,7 +83,7 @@ func RegisterUser(u *models.User) (token string, err error) {
 
 	token, err = LoginUser(*u, u.Email, u.Password)
 	if err != nil {
-		err = fmt.Errorf("Registration failed")
+		err = fmt.Errorf("registration failed")
 		return
 	}
 

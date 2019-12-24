@@ -64,7 +64,6 @@ func (db Database) begin() (tx *sql.Tx) {
 }
 
 func (db Database) prepare(q string) (stmt *sql.Stmt) {
-	// log.Println("Query:", q)
 	stmt, err := db.db.Prepare(q)
 	if err != nil {
 		log.Println(err)

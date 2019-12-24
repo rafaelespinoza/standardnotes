@@ -67,7 +67,7 @@ func (u *User) UpdatePassword(np NewPassword) error {
 	)
 
 	if err != nil {
-		logger.Log(err)
+		logger.LogIfDebug(err)
 		return err
 	}
 
@@ -90,7 +90,7 @@ func (u *User) UpdateParams(p Params) error {
 	)
 
 	if err != nil {
-		logger.Log(err)
+		logger.LogIfDebug(err)
 		return err
 	}
 
@@ -132,7 +132,7 @@ func (u User) MakeSaferCopy() User {
 func (u *User) LoadByEmail(email string) error {
 	_, err := db.SelectStruct("SELECT * FROM 'users' WHERE 'email'=?", u, email)
 	if err != nil {
-		logger.Log(err)
+		logger.LogIfDebug(err)
 	}
 	return err
 }
@@ -167,7 +167,7 @@ func (u *User) Create() error {
 		u.PwNonce, u.PwAuth, u.PwSalt, u.CreatedAt, u.UpdatedAt)
 
 	if err != nil {
-		logger.Log(err)
+		logger.LogIfDebug(err)
 	}
 
 	return err
@@ -179,7 +179,7 @@ func (u *User) LoadByEmailAndPassword(email, password string) {
 		u, email, Hash(password),
 	)
 	if err != nil {
-		logger.Log(err)
+		logger.LogIfDebug(err)
 	}
 }
 

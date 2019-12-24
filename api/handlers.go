@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 
@@ -21,7 +20,7 @@ type sfError struct {
 }
 
 func showError(w http.ResponseWriter, err error, code int) {
-	log.Println(err)
+	logger.LogIfDebug(err)
 	body, perr := json.Marshal(
 		sfError{
 			err.Error(),
@@ -71,7 +70,7 @@ func authenticateUser(r *http.Request) (*models.User, error) {
 	}
 
 	if claims, ok := token.Claims.(*interactors.UserClaims); ok && token.Valid {
-		logger.Log("Token is valid, claims: ", claims)
+		logger.LogIfDebug("Token is valid, claims: ", claims)
 
 		if err = user.LoadByUUID(claims.UUID); err != nil {
 			return user, fmt.Errorf("unknown user; %v", err)
@@ -156,7 +155,7 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 		showError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
-	logger.Log("Request:", p)
+	logger.LogIfDebug("Request:", p)
 
 	if err := user.UpdateParams(p); err != nil {
 		showError(w, err, http.StatusInternalServerError)
@@ -173,7 +172,7 @@ func RegisterUser(w http.ResponseWriter, r *http.Request) {
 		showError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
-	logger.Log("Request:", user)
+	logger.LogIfDebug("Request:", user)
 	token, err := interactors.RegisterUser(user)
 	if err != nil {
 		showError(w, err, http.StatusUnprocessableEntity)
@@ -194,7 +193,7 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 		showError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
-	logger.Log("Request:", user)
+	logger.LogIfDebug("Request:", user)
 	token, err := interactors.LoginUser(*user, user.Email, user.Password)
 	if err != nil {
 		showError(w, err, http.StatusUnauthorized)
@@ -211,7 +210,7 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 // GET /auth/params
 func GetParams(w http.ResponseWriter, r *http.Request) {
 	email := r.FormValue("email")
-	logger.Log("Request:", string(email))
+	logger.LogIfDebug("Request:", string(email))
 	var params models.Params
 	var err error
 	if params, err = interactors.MakeAuthParams(email); err == interactors.ErrInvalidEmail {
@@ -226,7 +225,7 @@ func GetParams(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	content, _ := json.MarshalIndent(params, "", "  ")
-	logger.Log("Response:", string(content))
+	logger.LogIfDebug("Response:", string(content))
 	writeJSONResponse(w, http.StatusOK, params)
 }
 
@@ -252,14 +251,14 @@ func SyncItems(w http.ResponseWriter, r *http.Request) {
 		showError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
-	logger.Log("Request:", request)
+	logger.LogIfDebug("Request:", request)
 	response, err := interactors.SyncUserItems(*user, request)
 	if err != nil {
 		showError(w, err, http.StatusInternalServerError)
 		return
 	}
 	content, _ := json.MarshalIndent(response, "", "  ")
-	logger.Log("Response:", string(content))
+	logger.LogIfDebug("Response:", string(content))
 	writeJSONResponse(w, http.StatusAccepted, response)
 }
 

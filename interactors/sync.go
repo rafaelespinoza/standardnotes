@@ -247,7 +247,7 @@ func enqueueRealtimeExtensionJobs(user models.User, items models.Items) (err err
 	if err != nil {
 		return
 	}
-	for _, ext := range extensions {
+	for i, ext := range extensions {
 		content := ext.DecodedContentMetadata()
 		if content == nil || content.Frequency != models.FrequencyRealtime || len(content.URL) < 1 {
 			continue
@@ -257,15 +257,18 @@ func enqueueRealtimeExtensionJobs(user models.User, items models.Items) (err err
 		for i, item := range items {
 			itemIDs[i] = item.UUID
 		}
-		err = jobs.PerformExtensionJob(
+		if err = jobs.PerformExtensionJob(
 			jobs.ExtensionJobParams{
 				URL:         content.URL,
 				ItemIDs:     itemIDs,
 				UserID:      user.UUID,
 				ExtensionID: ext.UUID,
 			},
-		)
-		if err != nil {
+		); err != nil {
+			log.Printf(
+				"could not perform job on extensions[%d]; %v",
+				i, err,
+			)
 			return
 		}
 	}

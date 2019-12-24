@@ -14,6 +14,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/rafaelespinoza/standardfile/config"
 	"github.com/rafaelespinoza/standardfile/db"
+	"github.com/rafaelespinoza/standardfile/logger"
 )
 
 var _Work chan bool
@@ -103,7 +104,7 @@ func makeRouter(conf config.Config) http.Handler {
 				fmt.Fprintf(
 					w,
 					"%s %d %s %q %d %d\n",
-					p.TimeStamp.UTC().Format("20060102150405.000"),
+					p.TimeStamp.UTC().Format(logger.TimeFormat),
 					p.StatusCode,
 					p.Request.Method,
 					p.Request.RequestURI,
