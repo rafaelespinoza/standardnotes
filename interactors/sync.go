@@ -50,9 +50,6 @@ func (r *SyncRequest) LoadValue(name string, value []string) { // TODO: rm this 
 func SyncUserItems(user models.User, req SyncRequest) (res *SyncResponse, err error) {
 	var cursorTime time.Time
 
-	if req.Limit < 1 {
-		req.Limit = 100000
-	}
 	res = &SyncResponse{}
 
 	if err = res.loadSyncItems(user, req); err != nil {
@@ -62,13 +59,13 @@ func SyncUserItems(user models.User, req SyncRequest) (res *SyncResponse, err er
 		cursorTime = res.Retrieved[len(res.Retrieved)-1].UpdatedAt
 	}
 	if !cursorTime.IsZero() {
-		res.CursorToken = models.GetTokenFromTime(cursorTime)
+		res.CursorToken = models.TimeToToken(cursorTime)
 	}
 
 	if len(res.Saved) < 1 {
-		res.SyncToken = models.GetTokenFromTime(time.Now())
+		res.SyncToken = models.TimeToToken(time.Now())
 	} else {
-		res.SyncToken = models.GetTokenFromTime(res.Saved[0].UpdatedAt)
+		res.SyncToken = models.TimeToToken(res.Saved[0].UpdatedAt)
 	}
 
 	err = enqueueRealtimeExtensionJobs(user, req.Items)
@@ -100,11 +97,24 @@ func (r *SyncResponse) loadSyncItems(user models.User, req SyncRequest) (err err
 	var saved models.Items
 	var conflicts []ItemConflict
 
-	if retrieved, err = user.LoadItems(
-		req.CursorToken,
-		req.SyncToken,
-		req.ContentType,
-	); err != nil {
+	limit := req.Limit
+	if limit <= 1 {
+		limit = models.UserItemMaxPageSize / 2
+	} else if limit > models.UserItemMaxPageSize {
+		limit = models.UserItemMaxPageSize
+	}
+
+	if req.CursorToken != "" {
+		date := models.TokenToTime(req.CursorToken)
+		retrieved, err = user.LoadItemsAfter(date, true, req.ContentType, limit)
+	} else if req.SyncToken != "" {
+		date := models.TokenToTime(req.SyncToken)
+		retrieved, err = user.LoadItemsAfter(date, false, req.ContentType, limit)
+	} else {
+		retrieved, err = user.LoadAllItems(req.ContentType, limit)
+	}
+
+	if err != nil {
 		return
 	}
 	r.Retrieved = retrieved
@@ -145,6 +155,25 @@ func (r *SyncResponse) loadSyncItems(user models.User, req SyncRequest) (err err
 	r.Saved = saved
 	r.Conflicts = conflicts
 	return
+}
+
+func loadUserSyncItems(user models.User, req SyncRequest) (models.Items, error) {
+	limit := req.Limit
+	if limit <= 1 {
+		limit = models.UserItemMaxPageSize / 2
+	} else if limit > models.UserItemMaxPageSize {
+		limit = models.UserItemMaxPageSize
+	}
+
+	if req.CursorToken != "" {
+		date := models.TokenToTime(req.CursorToken)
+		return user.LoadItemsAfter(date, true, req.ContentType, limit)
+	} else if req.SyncToken != "" {
+		date := models.TokenToTime(req.SyncToken)
+		return user.LoadItemsAfter(date, false, req.ContentType, limit)
+	} else {
+		return user.LoadAllItems(req.ContentType, limit)
+	}
 }
 
 const _MinConflictInterval = 1 * time.Second

@@ -58,7 +58,7 @@ func authenticateUser(r *http.Request) (*models.User, error) {
 		return user, fmt.Errorf("Missing authorization header")
 	}
 
-	token, err := jwt.ParseWithClaims(authHeaderParts[1], &interactors.UserClaims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(authHeaderParts[1], &models.UserClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
 		}
@@ -69,7 +69,7 @@ func authenticateUser(r *http.Request) (*models.User, error) {
 		return user, err
 	}
 
-	if claims, ok := token.Claims.(*interactors.UserClaims); ok && token.Valid {
+	if claims, ok := token.Claims.(*models.UserClaims); ok && token.Valid {
 		logger.LogIfDebug("Token is valid, claims: ", claims)
 
 		if err = user.LoadByUUID(claims.UUID); err != nil {

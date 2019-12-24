@@ -3,7 +3,6 @@ package models
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/base64"
 	"fmt"
 	"sort"
 	"strconv"
@@ -52,8 +51,8 @@ func (i *Item) Create() error {
 	i.UpdatedAt = time.Now()
 	logger.LogIfDebug("Create:", i.UUID)
 	return db.Query(`
-		INSERT INTO 'items' (
-			'uuid', 'user_uuid', content, content_type, enc_item_key, auth_hash, deleted, created_at, updated_at
+		INSERT INTO items (
+			uuid, user_uuid, content, content_type, enc_item_key, auth_hash, deleted, created_at, updated_at
 		) VALUES(?,?,?,?,?,?,?,?,?)`,
 		i.UUID, i.UserUUID, i.Content, i.ContentType, i.EncItemKey, i.AuthHash, i.Deleted, i.CreatedAt, i.UpdatedAt,
 	)
@@ -63,9 +62,9 @@ func (i *Item) Update() error {
 	i.UpdatedAt = time.Now()
 	logger.LogIfDebug("Update:", i.UUID)
 	return db.Query(`
-		UPDATE 'items'
-		SET 'content'=?, 'enc_item_key'=?, 'auth_hash'=?, 'deleted'=?, 'updated_at'=?
-		WHERE 'uuid'=? AND 'user_uuid'=?`,
+		UPDATE items
+		SET content=?, enc_item_key=?, auth_hash=?, deleted=?, updated_at=?
+		WHERE uuid=? AND user_uuid=?`,
 		i.Content, i.EncItemKey, i.AuthHash, i.Deleted, i.UpdatedAt,
 		i.UUID, i.UserUUID,
 	)
@@ -81,9 +80,9 @@ func (i *Item) Delete() error {
 	i.UpdatedAt = time.Now()
 
 	return db.Query(`
-		UPDATE 'items'
-		SET 'content'='', 'enc_item_key'='', 'auth_hash'='','deleted'=1, 'updated_at'=?
-		WHERE 'uuid'=? AND 'user_uuid'=?`,
+		UPDATE items
+		SET content='', enc_item_key='', auth_hash='', deleted=1, updated_at=?
+		WHERE uuid=? AND user_uuid=?`,
 		i.UpdatedAt, i.UUID, i.UserUUID,
 	)
 }
@@ -101,21 +100,16 @@ func (i Item) Copy() (Item, error) {
 }
 
 // Exists checks if an item exists in the DB.
-func (i *Item) Exists() (exists bool, err error) {
+func (i *Item) Exists() (bool, error) {
 	if i.UUID == "" {
-		return
+		return false, nil
 	}
-	uuid, err := db.SelectFirst("SELECT 'uuid' FROM 'items' WHERE 'uuid'=?", i.UUID)
-	if err != nil {
-		return
-	}
-	exists = uuid != ""
-	return
+	return db.SelectExists("SELECT uuid FROM items WHERE uuid=?", i.UUID)
 }
 
 // LoadByUUID populates the Item's fields by querying the DB.
 func (i *Item) LoadByUUID(uuid string) (err error) {
-	_, err = db.SelectStruct("SELECT * FROM 'items' WHERE 'uuid'=?", i, uuid)
+	_, err = db.SelectStruct("SELECT * FROM items WHERE uuid=?", i, uuid)
 	return
 }
 
@@ -148,36 +142,6 @@ func (i *Item) IsDailyBackupExtension() bool {
 	}
 	content := i.DecodedContentMetadata()
 	return content != nil && content.Frequency == FrequencyDaily
-}
-
-// GetTokenFromTime generates sync token for current time. TODO: rename to TokenizeTime
-func GetTokenFromTime(date time.Time) string {
-	return base64.URLEncoding.EncodeToString(
-		[]byte(
-			fmt.Sprintf(
-				"1:%d", // TODO: make use of "version" 1 and 2. (part before :)
-				date.UnixNano(),
-			),
-		),
-	)
-}
-
-// GetTimeFromToken - retrieve datetime from sync token
-func GetTimeFromToken(token string) time.Time {
-	decoded, err := base64.URLEncoding.DecodeString(token)
-	if err != nil {
-		logger.LogIfDebug(err)
-		return time.Now()
-	}
-	parts := strings.Split(string(decoded), ":")
-	str, err := strconv.ParseUint(parts[1], 10, 64)
-	if err != nil {
-		logger.LogIfDebug(err)
-		return time.Now()
-	}
-	// TODO: output "version" 1, 2 differently. See
-	// `lib/sync_engine/abstract/sync_manager.rb` in the ruby sync-server
-	return time.Time(time.Unix(0, int64(str)))
 }
 
 // Items is a collection of Item values.

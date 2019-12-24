@@ -55,7 +55,7 @@ func LoginUser(u models.User, email, password string) (token string, err error) 
 		return
 	}
 
-	token, err = CreateUserToken(u)
+	token, err = models.CreateUserToken(u)
 	if err != nil {
 		return
 	}

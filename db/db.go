@@ -98,8 +98,8 @@ func Init(dbpath string) {
 }
 
 //Query db function
-func Query(sql string, args ...interface{}) error {
-	stmt := database.prepare(sql)
+func Query(query string, args ...interface{}) error {
+	stmt := database.prepare(query)
 	defer stmt.Close()
 	tx := database.begin()
 	if _, err := tx.Stmt(stmt).Exec(args...); err != nil {
@@ -110,20 +110,25 @@ func Query(sql string, args ...interface{}) error {
 	return err
 }
 
-//SelectFirst - selects first result from a row
-func SelectFirst(sql string, args ...interface{}) (interface{}, error) {
-	stmt := database.prepare(sql)
+// SelectExists queries for the first row and swallows an ErrNoRows error to
+// signal that there are no matching rows.
+func SelectExists(query string, args ...interface{}) (exists bool, err error) {
+	stmt := database.prepare(query)
 	defer stmt.Close()
 	var result string
 	err = stmt.QueryRow(args...).Scan(&result)
-	if err != nil {
-		return nil, err
+	if err == sql.ErrNoRows {
+		err = nil // consider a non-error, means the row does not exist.
+		return
 	}
-	return result, nil
+	if err == nil {
+		exists = true
+	}
+	return
 }
 
 //SelectStruct - returns selected result as struct
-func SelectStruct(sql string, obj interface{}, args ...interface{}) (interface{}, error) {
+func SelectStruct(query string, obj interface{}, args ...interface{}) (interface{}, error) {
 	destv := reflect.ValueOf(obj)
 	elem := destv.Elem()
 	typeOfObj := elem.Type()
@@ -133,7 +138,7 @@ func SelectStruct(sql string, obj interface{}, args ...interface{}) (interface{}
 		values = append(values, elem.FieldByName(typeOfObj.Field(i).Name).Addr().Interface())
 	}
 
-	stmt := database.prepare(sql)
+	stmt := database.prepare(query)
 	defer stmt.Close()
 
 	rows, err := stmt.Query(args...)
@@ -148,8 +153,8 @@ func SelectStruct(sql string, obj interface{}, args ...interface{}) (interface{}
 }
 
 //Select - selects multiple results from the DB
-func Select(sql string, out interface{}, args ...interface{}) (err error) {
-	stmt := database.prepare(sql)
+func Select(query string, out interface{}, args ...interface{}) (err error) {
+	stmt := database.prepare(query)
 	defer stmt.Close()
 
 	rows, err := stmt.Query(args...)

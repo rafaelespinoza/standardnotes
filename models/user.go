@@ -59,9 +59,9 @@ func (u *User) UpdatePassword(np NewPassword) error {
 	u.UpdatedAt = time.Now()
 	// TODO: validate incoming password params
 	err := db.Query(`
-		UPDATE 'users'
-		SET 'password'=?, 'pw_cost'=?, 'pw_salt'=?, 'pw_nonce'=?, 'updated_at'=?
-		WHERE 'uuid'=?`,
+		UPDATE users
+		SET password=?, pw_cost=?, pw_salt=?, pw_nonce=?, updated_at=?
+		WHERE uuid=?`,
 		u.Password, u.PwCost, u.PwSalt, u.PwNonce, u.UpdatedAt,
 		u.UUID,
 	)
@@ -82,9 +82,9 @@ func (u *User) UpdateParams(p Params) error {
 
 	u.UpdatedAt = time.Now()
 	err := db.Query(`
-		UPDATE 'users'
-		SET 'pw_func'=?, 'pw_alg'=?, 'pw_cost'=?, 'pw_key_size'=?, 'pw_salt'=?, 'updated_at'=?
-		WHERE 'uuid'=?`,
+		UPDATE users
+		SET pw_func=?, pw_alg=?, pw_cost=?, pw_key_size=?, pw_salt=?, updated_at=?
+		WHERE uuid=?`,
 		u.PwFunc, u.PwAlg, u.PwCost, u.PwKeySize, u.PwSalt, time.Now(),
 		u.UUID,
 	)
@@ -98,21 +98,16 @@ func (u *User) UpdateParams(p Params) error {
 }
 
 // Exists checks if the user exists in the DB.
-func (u *User) Exists() (exists bool, err error) {
+func (u *User) Exists() (bool, error) {
 	if u.UUID == "" {
-		return
+		return false, nil
 	}
-	uuid, err := db.SelectFirst("SELECT 'uuid' FROM 'users' WHERE 'email'=?", u.Email)
-	if err != nil {
-		return
-	}
-	exists = uuid != ""
-	return
+	return db.SelectExists("SELECT uuid FROM users WHERE email=?", u.Email)
 }
 
 // LoadByUUID populates the User's fields by querying the DB.
 func (u *User) LoadByUUID(uuid string) (err error) {
-	_, err = db.SelectStruct("SELECT * FROM 'users' WHERE 'uuid'=?", u, uuid)
+	_, err = db.SelectStruct("SELECT * FROM users WHERE uuid=?", u, uuid)
 	return
 }
 
@@ -130,7 +125,7 @@ func (u User) MakeSaferCopy() User {
 
 // LoadByEmail populates the user fields with a DB lookup.
 func (u *User) LoadByEmail(email string) error {
-	_, err := db.SelectStruct("SELECT * FROM 'users' WHERE 'email'=?", u, email)
+	_, err := db.SelectStruct("SELECT * FROM users WHERE email=?", u, email)
 	if err != nil {
 		logger.LogIfDebug(err)
 	}
@@ -175,7 +170,7 @@ func (u *User) Create() error {
 
 func (u *User) LoadByEmailAndPassword(email, password string) {
 	_, err := db.SelectStruct(
-		"SELECT * FROM 'users' WHERE 'email'=? AND 'password'=?",
+		"SELECT * FROM users WHERE email=? AND password=?",
 		u, email, Hash(password),
 	)
 	if err != nil {
@@ -185,9 +180,9 @@ func (u *User) LoadByEmailAndPassword(email, password string) {
 
 func (u *User) LoadActiveItems() (items Items, err error) {
 	err = db.Select(`
-		SELECT * FROM 'items'
-		WHERE 'user_uuid'=? AND 'content_type' IS NOT '' AND deleted = ?
-		ORDER BY 'updated_at' DESC`,
+		SELECT * FROM items
+		WHERE user_uuid=? AND content_type IS NOT '' AND deleted = ?
+		ORDER BY updated_at DESC`,
 		&items,
 		u.UUID, "SF|Extension", false,
 	)
@@ -196,43 +191,54 @@ func (u *User) LoadActiveItems() (items Items, err error) {
 
 func (u *User) LoadActiveExtensionItems() (items Items, err error) {
 	err = db.Select(`
-		SELECT * FROM 'items'
-		WHERE 'user_uuid'=? AND 'content_type' = ? AND deleted = ?
-		ORDER BY 'updated_at' DESC`,
+		SELECT * FROM items
+		WHERE user_uuid=? AND content_type = ? AND deleted = ?
+		ORDER BY updated_at DESC`,
 		&items,
 		u.UUID, "SF|Extension", false,
 	)
 	return
 }
 
-func (u *User) LoadItems(cursorToken, syncToken, contentType string) (items Items, err error) {
+// UserItemMaxPageSize is the maximum amount of user items to return in a query.
+const UserItemMaxPageSize = 1000
+
+// LoadItemsAfter fetches user items from the DB. If gte is true,  then it
+// performs a >= comparison on the updated at field. Otherwise, it does a >
+// comparison.
+func (u *User) LoadItemsAfter(date time.Time, gte bool, contentType string, limit int) (items Items, err error) {
 	// TODO: add condition: `WHERE content_type = req.ContentType`
-	if cursorToken != "" {
-		date := GetTimeFromToken(cursorToken)
+	// TODO: use limit, set to max if too high.
+	if gte {
 		err = db.Select(`
 			SELECT *
-			FROM 'items'
-			WHERE 'user_uuid'=? AND 'updated_at' >= ?
-			ORDER BY 'updated_at' DESC`,
+			FROM items
+			WHERE user_uuid=? AND updated_at >= ?
+			ORDER BY updated_at DESC`,
 			&items, u.UUID, date,
 		)
-
-	} else if syncToken != "" {
-		date := GetTimeFromToken(syncToken)
-		err = db.Select(`
-			SELECT *
-			FROM 'items'
-			WHERE 'user_uuid'=? AND 'updated_at' > ?
-			ORDER BY 'updated_at' DESC`,
-			&items, u.UUID, date,
-		)
-
 	} else {
-		err = db.Select(
-			"SELECT * FROM 'items' WHERE 'user_uuid'=? ORDER BY 'updated_at' DESC",
-			&items, u.UUID,
+		err = db.Select(`
+			SELECT *
+			FROM items
+			WHERE user_uuid=? AND updated_at > ?
+			ORDER BY updated_at DESC`,
+			&items, u.UUID, date,
 		)
+
 	}
+	return
+}
+
+// LoadAllItems fetches all the user's items up to limit. Typically, this is
+// used for initial item syncs.
+func (u *User) LoadAllItems(contentType string, limit int) (items Items, err error) {
+	// TODO: add condition: `WHERE content_type = req.ContentType`
+	// TODO: use limit, set to max if too high.
+	err = db.Select(
+		"SELECT * FROM items WHERE user_uuid=? AND deleted = ? ORDER BY updated_at DESC",
+		&items, u.UUID, false,
+	)
 	return
 }
 
