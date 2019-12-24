@@ -113,6 +113,42 @@ func (i *Item) LoadByUUID(uuid string) (err error) {
 	return
 }
 
+// MergeProtected reconciles Item fields in preparation for sync updates while
+// offering some simple safeguards. An error is returned unless the receiver
+// and the updates Item have the same UUID, UserUUID and ContentType. Attempts
+// to update timestamp fields are ignored. The Deleted Field can be assigned
+// directly. As long as the fields in updates are not empty, they're assigned to
+// to the receiver. Use the Delete method to reset the Content, EncItemKey,
+// AuthHash fields to empty.
+func (i *Item) MergeProtected(updates *Item) (err error) {
+	if i.UUID != updates.UUID {
+		err = fmt.Errorf("can only merge item updates with same UUID")
+		return
+	}
+	if i.UserUUID != updates.UserUUID {
+		err = fmt.Errorf("items must belong to same user")
+		return
+	}
+	if i.ContentType != updates.ContentType {
+		err = fmt.Errorf("items must have same ContentType")
+		return
+	}
+
+	if updates.Content != "" {
+		i.Content = updates.Content
+	}
+	if updates.EncItemKey != "" {
+		i.EncItemKey = updates.EncItemKey
+	}
+	if updates.AuthHash != "" {
+		i.AuthHash = updates.AuthHash
+	}
+	if i.Deleted != updates.Deleted {
+		i.Deleted = updates.Deleted
+	}
+	return
+}
+
 type Frequency uint8
 
 const (
@@ -148,14 +184,16 @@ func (i *Item) IsDailyBackupExtension() bool {
 type Items []Item
 
 func (items *Items) Delete(uuid string) {
-	position := 0
+	// NOTE: if Items was a slice of Item pointers or any Item field is a
+	// pointer, this could lead to memory leaks.
+	pos := 0
 	for i, item := range *items {
 		if item.UUID == uuid {
-			position = i
+			pos = i
 			break
 		}
 	}
-	(*items) = (*items)[:position:position]
+	(*items) = append((*items)[:pos], (*items)[pos+1:]...)
 }
 
 func (items Items) ComputeHashDigest() string {
