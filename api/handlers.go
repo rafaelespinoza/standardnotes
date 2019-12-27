@@ -4,13 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 
-	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/rafaelespinoza/standardfile/config"
-	"github.com/rafaelespinoza/standardfile/encryption"
 	"github.com/rafaelespinoza/standardfile/interactors"
 	"github.com/rafaelespinoza/standardfile/interactors/itemsync"
+	"github.com/rafaelespinoza/standardfile/interactors/token"
 	"github.com/rafaelespinoza/standardfile/logger"
 	"github.com/rafaelespinoza/standardfile/models"
 )
@@ -52,37 +50,7 @@ func readJSONRequest(r *http.Request, dst interface{}) error {
 }
 
 func authenticateUser(r *http.Request) (*models.User, error) {
-	var user = models.NewUser()
-
-	authHeaderParts := strings.Split(r.Header.Get("Authorization"), " ")
-	if len(authHeaderParts) != 2 || strings.ToLower(authHeaderParts[0]) != "bearer" {
-		return user, fmt.Errorf("Missing authorization header")
-	}
-
-	token, err := jwt.ParseWithClaims(authHeaderParts[1], &models.UserClaims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
-		}
-		return encryption.SigningKey, nil
-	})
-
-	if err != nil {
-		return user, err
-	}
-
-	if claims, ok := token.Claims.(*models.UserClaims); ok && token.Valid {
-		logger.LogIfDebug("Token is valid, claims: ", claims)
-
-		if err = user.LoadByUUID(claims.UUID); err != nil {
-			return user, fmt.Errorf("unknown user; %v", err)
-		}
-
-		if user.Validate(claims.PwHash) {
-			return user, nil
-		}
-	}
-
-	return user, fmt.Errorf("Invalid token")
+	return token.AuthenticateUser(r.Header.Get("Authorization"))
 }
 
 // Dashboard is the root handler.
@@ -125,10 +93,10 @@ func ChangePassword(w http.ResponseWriter, r *http.Request) {
 	switch err {
 	case nil:
 		break
-	case interactors.ErrNoPasswordProvidedDuringChange:
-		showError(w, err, http.StatusUnauthorized)
-		return
-	case interactors.ErrPasswordIncorrect:
+	case
+		interactors.ErrNoPasswordProvidedDuringChange,
+		interactors.ErrMissingNewAuthParams,
+		interactors.ErrPasswordIncorrect:
 		showError(w, err, http.StatusUnauthorized)
 		return
 	default:

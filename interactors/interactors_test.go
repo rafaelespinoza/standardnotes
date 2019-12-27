@@ -1,6 +1,7 @@
 package interactors_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/rafaelespinoza/standardfile/db"
@@ -10,6 +11,57 @@ import (
 
 func init() {
 	db.Init(":memory:")
+}
+
+func TestMakeAuthParams(t *testing.T) {
+	t.Run("happy path", func(t *testing.T) {
+		user := models.NewUser()
+		user.Email = "foo@example.com"
+		user.Password = "testpassword123"
+		user.PwNonce = "stub_password_nonce"
+		var err error
+		if err = user.Create(); err != nil {
+			t.Fatal(err)
+		}
+		var params models.Params
+		if params, err = interactors.MakeAuthParams(user.Email); err != nil {
+			t.Error(err)
+		}
+		if params.PwFunc != "pbkdf2" {
+			t.Errorf("wrong PwFunc; got %q, expected %q", params.PwFunc, "pbkdf2")
+		}
+		if params.PwAlg != "sha512" {
+			t.Errorf("wrong PwAlg; got %q, expected %q", params.PwAlg, "sha512")
+		}
+		if params.PwCost < 100000 {
+			t.Errorf("PwCost too cheap; got %d, expected >= %d", params.PwCost, 100000)
+		}
+		if params.PwNonce != "stub_password_nonce" {
+			t.Errorf(
+				"wrong value for PwNonce; got %q, expected %q",
+				params.PwNonce, "stub_password_nonce",
+			)
+		}
+	})
+	t.Run("invalid email", func(t *testing.T) {
+		user := models.NewUser()
+		user.Email = "foo@example.com"
+		user.Password = "testpassword123"
+		var err error
+		if err = user.Create(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = interactors.MakeAuthParams(""); err != interactors.ErrInvalidEmail {
+			t.Errorf("expected %v but got %v", interactors.ErrInvalidEmail, err)
+		}
+		longEmail := strings.Repeat("foobar", 42) + "@example.com"
+		if _, err = interactors.MakeAuthParams(longEmail); err != interactors.ErrInvalidEmail {
+			t.Errorf("expected %v but got %v", interactors.ErrInvalidEmail, err)
+		}
+		if _, err = interactors.MakeAuthParams("foobar"); err != interactors.ErrInvalidEmail {
+			t.Errorf("expected %v but got %v", interactors.ErrInvalidEmail, err)
+		}
+	})
 }
 
 func TestRegisterLoginUser(t *testing.T) {

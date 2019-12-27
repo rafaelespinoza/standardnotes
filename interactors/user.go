@@ -12,13 +12,16 @@ import (
 )
 
 var (
-	ErrInvalidEmail                   = errors.New("email invalid")
+	ErrInvalidEmail         = errors.New("email invalid.")
+	ErrMissingNewAuthParams = errors.New(
+		"the change password request is missing new auth parameters, please try again",
+	)
 	ErrNoPasswordProvidedDuringChange = errors.New(strings.TrimSpace(`
-		your current password is required to change your password.
-		Please update your application if you do not see this option.`,
+		your current password is required to change your password,
+		please update your application if you do not see this option.`,
 	))
 	ErrPasswordIncorrect = errors.New(
-		"the current password you entered is incorrect. Please try again",
+		"the current password you entered is incorrect, please try again",
 	)
 )
 
@@ -27,7 +30,9 @@ func MakeAuthParams(email string) (params models.Params, err error) {
 		return
 	}
 	user := models.NewUser()
-	user.LoadByEmail(email)
+	if err = user.LoadByEmail(email); err != nil {
+		return
+	}
 	params = models.MakeAuthParams(*user)
 	return
 }
@@ -55,7 +60,7 @@ func LoginUser(u models.User, email, password string) (token string, err error) 
 		return
 	}
 
-	token, err = models.CreateUserToken(u)
+	token, err = models.EncodeToken(u)
 	if err != nil {
 		return
 	}
@@ -101,9 +106,10 @@ func ChangeUserPassword(user *models.User, password models.NewPassword) (token s
 	if len(password.CurrentPassword) == 0 {
 		err = ErrNoPasswordProvidedDuringChange
 		return
+	} else if len(password.PwNonce) == 0 {
+		err = ErrMissingNewAuthParams
+		return
 	}
-
-	// TODO: check password nonce
 
 	if _, err = LoginUser(*user, password.Email, password.CurrentPassword); err != nil {
 		if ierr := handleFailedAuthAttempt(*user); ierr != nil {

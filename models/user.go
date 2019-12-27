@@ -135,17 +135,17 @@ func (u *User) LoadByEmail(email string) error {
 // Create saves the user to the DB.
 func (u *User) Create() error {
 	if u.UUID != "" {
-		return fmt.Errorf("Trying to save existing user")
+		return fmt.Errorf("cannot recreate existing user")
 	}
 
 	if u.Email == "" || u.Password == "" {
-		return fmt.Errorf("Empty email or password")
+		return fmt.Errorf("empty email or password")
 	}
 
 	if exists, err := u.Exists(); err != nil {
 		return err
 	} else if exists {
-		return fmt.Errorf("Unable to register")
+		return fmt.Errorf("unable to register; already exists")
 	}
 
 	id := uuid.New()
@@ -168,14 +168,15 @@ func (u *User) Create() error {
 	return err
 }
 
-func (u *User) LoadByEmailAndPassword(email, password string) {
-	_, err := db.SelectStruct(
+func (u *User) LoadByEmailAndPassword(email, password string) (err error) {
+	_, err = db.SelectStruct(
 		"SELECT * FROM users WHERE email=? AND password=?",
 		u, email, Hash(password),
 	)
 	if err != nil {
 		logger.LogIfDebug(err)
 	}
+	return
 }
 
 func (u *User) LoadActiveItems() (items Items, err error) {
@@ -268,23 +269,22 @@ func MakeAuthParams(u User) Params {
 	params.PwCost = u.PwCost
 	params.Identifier = u.Email
 
-	if u.PwFunc != "" {
+	if u.PwFunc != "" { // v1 only
 		params.PwFunc = u.PwFunc
 		params.PwAlg = u.PwAlg
 		params.PwKeySize = u.PwKeySize
 	}
-
-	if u.PwNonce != "" {
-		params.PwNonce = u.PwNonce
-	}
-
-	if u.PwSalt == "" {
+	if u.PwSalt == "" { // v2 only
 		nonce := u.PwNonce
 		if nonce == "" {
 			nonce = "a04a8fe6bcb19ba61c5c0873d391e987982fbbd4"
 		}
 		u.PwSalt = encryption.Salt(u.Email, nonce)
 	}
+	if u.PwNonce != "" { // v3 only
+		params.PwNonce = u.PwNonce
+	}
+
 	params.PwSalt = u.PwSalt
 
 	return params
