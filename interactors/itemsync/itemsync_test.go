@@ -21,9 +21,35 @@ func TestMain(m *testing.M) {
 }
 
 func TestSyncUserItems(t *testing.T) {
-	t.Skip()
-	// TODO: change job queueing stuff to an interface and just check that
-	// they're called. The most important stuff happens before the job queueing.
+	db.Init(":memory:")
+
+	user := models.User{UUID: t.Name()}
+
+	existingItems := []models.Item{
+		makeItem(t.Name()+"/alpha", user.UUID),
+		makeItem(t.Name()+"/bravo", user.UUID),
+		makeItem(t.Name()+"/charlie", user.UUID),
+		makeItem(t.Name()+"/delta", user.UUID),
+	}
+	for i, item := range existingItems {
+		if err := item.Save(); err != nil {
+			t.Fatalf("could not save existingItems[%d] during setup; %v", i, err)
+		}
+	}
+	res, err := SyncUserItems(user, Request{ComputeIntegrity: true})
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if res.CursorToken == "" {
+		t.Error("expected CursorToken not to be empty")
+	}
+	if res.SyncToken == "" {
+		t.Error("expected SyncToken not to be empty")
+	}
+	if res.IntegrityHash == "" {
+		t.Error("expected IntegrityHash not to be empty")
+	}
 }
 
 func TestDoItemSync(t *testing.T) {
@@ -38,6 +64,7 @@ func TestDoItemSync(t *testing.T) {
 		return
 	}
 	defer os.RemoveAll(pathToTestDir)
+	// debugging is easier when the DB is not in-memory.
 	db.Init(pathToTestDir + "/" + testDBName)
 
 	user := models.User{UUID: t.Name()}
@@ -148,8 +175,6 @@ func TestDoItemSync(t *testing.T) {
 	if updatedDeletedItem.AuthHash != "" {
 		t.Error("expected deleted item AuthHash to be empty")
 	}
-
-	// TODO: check error handling from checkItemConflicts
 }
 
 func TestFindCheckItem(t *testing.T) {
@@ -159,6 +184,7 @@ func TestFindCheckItem(t *testing.T) {
 		return
 	}
 	defer os.RemoveAll(pathToTestDir)
+	// debugging is easier when the DB is not in-memory.
 	db.Init(pathToTestDir + "/" + testDBName)
 
 	t.Run("item does not exist in DB", func(t *testing.T) {

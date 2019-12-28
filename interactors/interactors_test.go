@@ -14,7 +14,7 @@ func init() {
 }
 
 func TestMakeAuthParams(t *testing.T) {
-	t.Run("happy path", func(t *testing.T) {
+	t.Run("ok", func(t *testing.T) {
 		user := models.NewUser()
 		user.Email = "foo@example.com"
 		user.Password = "testpassword123"
@@ -43,7 +43,8 @@ func TestMakeAuthParams(t *testing.T) {
 			)
 		}
 	})
-	t.Run("invalid email", func(t *testing.T) {
+
+	t.Run("errors", func(t *testing.T) {
 		user := models.NewUser()
 		user.Email = "foo@example.com"
 		user.Password = "testpassword123"
@@ -64,7 +65,7 @@ func TestMakeAuthParams(t *testing.T) {
 	})
 }
 
-func TestRegisterLoginUser(t *testing.T) {
+func TestRegisterUser(t *testing.T) {
 	user := models.User{
 		Email:     "user2@local",
 		Password:  "3cb5561daa49bd5b4438ad214a6f9a6d9b056a2c0b9a91991420ad9d658b8fac",
@@ -76,26 +77,184 @@ func TestRegisterLoginUser(t *testing.T) {
 	}
 	tokenAfterRegistration, err := interactors.RegisterUser(&user)
 	if err != nil {
-		t.Error("Register failed", err)
-		return
+		t.Error(err)
 	}
-	if len(tokenAfterRegistration) < 1 {
-		t.Error("token empty")
-		return
+	if tokenAfterRegistration == "" {
+		t.Error("token should not be empty")
 	}
 
 	tokenAfterLogin, err := interactors.LoginUser(user, user.Email, user.Password)
 	if err != nil {
-		t.Error("Login failed", err)
-		return
+		t.Error(err)
 	}
-	if len(tokenAfterLogin) < 1 {
-		t.Error("token empty")
+	if tokenAfterLogin == "" {
+		t.Error("token should not be empty")
 	}
 	if tokenAfterLogin != tokenAfterRegistration {
-		t.Errorf(
-			"tokens should be the same\nafter registration: %q\nafter logging in:   %q",
-			tokenAfterRegistration, tokenAfterLogin,
-		)
+		if tokenAfterLogin != tokenAfterRegistration {
+			t.Errorf(
+				"tokens should be the same\nafter registration: %q\nafter logging in:   %q",
+				tokenAfterRegistration, tokenAfterLogin,
+			)
+		}
 	}
+}
+
+func TestLoginUser(t *testing.T) {
+	const plaintextPassword = "testpassword123"
+
+	t.Run("ok", func(t *testing.T) {
+		user := models.NewUser()
+		user.Email = "foo@example.com"
+		user.Password = plaintextPassword
+		user.PwNonce = "stub_password_nonce"
+		if err := user.Create(); err != nil {
+			t.Fatal(err)
+		}
+
+		token, err := interactors.LoginUser(*user, user.Email, user.Password)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		if token == "" {
+			t.Error("token empty")
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		t.Run("wrong password", func(t *testing.T) {
+			user := models.NewUser()
+			user.Email = "foo@example.com"
+			user.Password = plaintextPassword
+			user.PwNonce = "stub_password_nonce"
+			if err := user.Create(); err != nil {
+				t.Fatal(err)
+			}
+
+			token, err := interactors.LoginUser(*user, user.Email, plaintextPassword)
+			if err == nil {
+				t.Errorf("expected error; got %v", err)
+			}
+			if token != "" {
+				t.Error("token should be empty")
+			}
+		})
+
+		t.Run("unregistered user", func(t *testing.T) {
+			user := models.NewUser()
+			user.Email = "foo@example.com"
+			user.Password = plaintextPassword
+			user.PwNonce = "stub_password_nonce"
+
+			token, err := interactors.LoginUser(*user, user.Email, user.Password)
+			if err == nil {
+				t.Errorf("expected error; got %v", err)
+			}
+			if token != "" {
+				t.Error("token should be empty")
+			}
+		})
+	})
+}
+
+func TestChangeUserPassword(t *testing.T) {
+	t.Run("ok", func(t *testing.T) {
+		var err error
+
+		user := models.NewUser()
+		user.Email = "foo@example.com"
+		user.Password = "testpassword123"
+		user.PwNonce = "stub_password_nonce"
+		oldToken, err := interactors.RegisterUser(user)
+		if err != nil {
+			t.Fatalf("did not expect error; got %v", err)
+		}
+		newPassword := models.NewPassword{
+			User:            *user,
+			CurrentPassword: user.Password,
+			NewPassword:     user.Password[1:],
+		}
+
+		newToken, err := interactors.ChangeUserPassword(user, newPassword)
+		if err != nil {
+			t.Errorf("did not expect error; got %v", err)
+		}
+		if newToken == "" {
+			t.Error("expected an output token, got empty")
+		}
+		if newToken == oldToken {
+			t.Error("new token should not equal old token")
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		t.Run("current password not provided", func(t *testing.T) {
+			user := models.NewUser()
+			user.Email = "foo@example.com"
+			user.Password = "testpassword123"
+			user.PwNonce = "stub_password_nonce"
+			if err := user.Create(); err != nil {
+				t.Fatalf("could not set up user; got %v", err)
+			}
+
+			newPassword := models.NewPassword{User: *user}
+			token, err := interactors.ChangeUserPassword(user, newPassword)
+			if err != interactors.ErrNoPasswordProvidedDuringChange {
+				t.Errorf(
+					"expected %v, got %v",
+					interactors.ErrNoPasswordProvidedDuringChange, err,
+				)
+			}
+			if token != "" {
+				t.Errorf("expected empty token, got %q", token)
+			}
+		})
+
+		t.Run("no password nonce", func(t *testing.T) {
+			user := models.NewUser()
+			user.Email = "foo@example.com"
+			user.Password = "testpassword123"
+			if err := user.Create(); err != nil {
+				t.Fatalf("could not set up user; got %v", err)
+			}
+
+			newPassword := models.NewPassword{User: *user, CurrentPassword: user.Password}
+			token, err := interactors.ChangeUserPassword(user, newPassword)
+			if err != interactors.ErrMissingNewAuthParams {
+				t.Errorf(
+					"expected %v, got %v",
+					interactors.ErrMissingNewAuthParams, err,
+				)
+			}
+			if token != "" {
+				t.Errorf("expected empty token, got %q", token)
+			}
+		})
+
+		t.Run("current password incorrect", func(t *testing.T) {
+			user := models.NewUser()
+			user.Email = "foo@example.com"
+			user.Password = "testpassword123"
+			user.PwNonce = "stub_password_nonce"
+			if err := user.Create(); err != nil {
+				t.Fatalf("could not set up user; got %v", err)
+			}
+
+			newPassword := models.NewPassword{
+				User:            *user,
+				CurrentPassword: user.Password[1:],
+			}
+			token, err := interactors.ChangeUserPassword(user, newPassword)
+			if err != interactors.ErrPasswordIncorrect {
+				t.Errorf(
+					"expected %v, got %v",
+					interactors.ErrPasswordIncorrect, err,
+				)
+			}
+			if token != "" {
+				t.Errorf("expected empty token, got %q", token)
+			}
+		})
+	})
 }
