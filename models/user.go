@@ -180,10 +180,12 @@ func (u *User) Create() error {
 	return err
 }
 
+// LoadByEmailAndPassword populates user fields by looking up the email and
+// hashed password. The password argument should already be hashed.
 func (u *User) LoadByEmailAndPassword(email, password string) (err error) {
 	err = db.SelectStruct(
 		"SELECT * FROM users WHERE email=? AND password=?",
-		u, email, Hash(password),
+		u, email, password,
 	)
 	if err != nil {
 		logger.LogIfDebug(err)

@@ -53,7 +53,9 @@ func validateEmail(email string) error {
 
 // LoginUser signs in the user. It returns a token on success, otherwise an error.
 func LoginUser(u models.User, email, password string) (token string, err error) {
-	u.LoadByEmailAndPassword(email, password)
+	if err = u.LoadByEmailAndPassword(email, password); err != nil {
+		return
+	}
 
 	if u.UUID == "" {
 		err = fmt.Errorf("invalid email or password")
