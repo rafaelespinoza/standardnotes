@@ -78,25 +78,28 @@ func Serve(cfg config.Config) {
 
 // makeRouter sets up an http.Server with request handlers.
 func makeRouter(conf config.Config) http.Handler {
-	router := mux.NewRouter()
+	r := mux.NewRouter()
 
 	// routes
-	router.HandleFunc("/", Dashboard).Methods(http.MethodGet)
+	addRoute(r, "/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("version " + config.Metadata.Version))
+	}, conf.UseCORS, http.MethodGet)
 
-	router.HandleFunc("/items/sync", itemsHandlers.SyncItems).Methods(http.MethodPost)
-	router.HandleFunc("/items/backup", itemsHandlers.BackupItems).Methods(http.MethodPost)
+	addRoute(r, "/items/sync", itemsHandlers.SyncItems, conf.UseCORS, http.MethodPost)
+	addRoute(r, "/items/backup", itemsHandlers.BackupItems, conf.UseCORS, http.MethodPost)
 
-	router.HandleFunc("/auth/params", authHandlers.GetParams).Methods(http.MethodGet)
-	router.HandleFunc("/auth/update", authHandlers.UpdateUser).Methods(http.MethodPost)
-	router.HandleFunc("/auth/change_pw", authHandlers.ChangePassword).Methods(http.MethodPost)
-	router.HandleFunc("/auth/sign_in", authHandlers.LoginUser).Methods(http.MethodPost)
-	router.HandleFunc("/auth/sign_in.json", authHandlers.LoginUser).Methods(http.MethodPost)
+	addRoute(r, "/auth/params", authHandlers.GetParams, conf.UseCORS, http.MethodGet)
+	addRoute(r, "/auth/update", authHandlers.UpdateUser, conf.UseCORS, http.MethodPost)
+	addRoute(r, "/auth/change_pw", authHandlers.ChangePassword, conf.UseCORS, http.MethodPost)
+	addRoute(r, "/auth/sign_in", authHandlers.LoginUser, conf.UseCORS, http.MethodPost)
+	addRoute(r, "/auth/sign_in.json", authHandlers.LoginUser, conf.UseCORS, http.MethodPost)
 	if !conf.NoReg {
-		router.HandleFunc("/auth", authHandlers.RegisterUser).Methods(http.MethodPost)
+		addRoute(r, "/auth", authHandlers.RegisterUser, conf.UseCORS, http.MethodPost)
 	}
 
 	// middleware
-	router.Use(func(next http.Handler) http.Handler {
+	r.Use(func(next http.Handler) http.Handler {
 		return handlers.CustomLoggingHandler(
 			os.Stdout,
 			next,
@@ -115,12 +118,28 @@ func makeRouter(conf config.Config) http.Handler {
 		)
 	})
 	if conf.UseCORS {
-		router.Use(mux.CORSMethodMiddleware(router))
+		r.Use(mux.CORSMethodMiddleware(r))
 	}
 
 	server := http.Server{
 		Addr:    conf.Host + ":" + strconv.Itoa(conf.Port),
-		Handler: router,
+		Handler: r,
 	}
 	return server.Handler
+}
+
+// addRoute sets up one route on router. If cors is true, then it adds an
+// additional CORS handler and adds the OPTIONS method to the route.
+func addRoute(router *mux.Router, path string, handler http.HandlerFunc, cors bool, mtds ...string) {
+	if cors {
+		router.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "https://app.standardnotes.org")
+			w.Header().Set("Access-Control-Max-Age", "86400")
+			w.Header().Set("Access-Control-Allow-Headers", "*")
+			for _, key := range []string{"Access-Token", "Client", "UID"} {
+				w.Header().Add("Access-Control-Expose-Headers", key)
+			}
+		}).Methods(http.MethodOptions)
+	}
+	router.HandleFunc(path, handler).Methods(mtds...)
 }

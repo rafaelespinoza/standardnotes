@@ -3,9 +3,9 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
-	"github.com/rafaelespinoza/standardfile/config"
 	"github.com/rafaelespinoza/standardfile/interactors"
 	"github.com/rafaelespinoza/standardfile/interactors/itemsync"
 	"github.com/rafaelespinoza/standardfile/interactors/token"
@@ -13,21 +13,25 @@ import (
 	"github.com/rafaelespinoza/standardfile/models"
 )
 
-type sfError struct {
-	Message string `json:"message"`
-	Code    int    `json:"code"`
+func makeError(err error, code int) map[string]interface{} {
+	var serr = err
+	if code >= 500 {
+		// log the real error, obfuscate the error for end user.
+		log.Println(err)
+		serr = fmt.Errorf(http.StatusText(code))
+	}
+
+	return map[string]interface{}{
+		"message": serr.Error(),
+		"code":    code,
+	}
 }
 
-func showError(w http.ResponseWriter, err error, code int) {
+func mustShowError(w http.ResponseWriter, err error, code int) {
 	logger.LogIfDebug(err)
-	body, perr := json.Marshal(
-		sfError{
-			err.Error(),
-			code,
-		},
-	)
-	if perr != nil {
-		panic(perr)
+	body, merr := json.Marshal(makeError(err, code))
+	if merr != nil {
+		panic(merr)
 	}
 	w.WriteHeader(code)
 	fmt.Fprintf(w, `{"error": %s}`, string(body))
@@ -40,6 +44,7 @@ func writeJSONResponse(w http.ResponseWriter, status int, data interface{}) erro
 	}
 
 	w.WriteHeader(status)
+	w.Header().Set("Content-Type", "application/json")
 	w.Write(body)
 	return nil
 }
@@ -51,13 +56,6 @@ func readJSONRequest(r *http.Request, dst interface{}) error {
 
 func authenticateUser(r *http.Request) (*models.User, error) {
 	return token.AuthenticateUser(r.Header.Get("Authorization"))
-}
-
-// Dashboard is the root handler.
-// GET /
-func Dashboard(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Dashboard. Server version: " + config.Metadata.Version))
 }
 
 // authHandlers groups http handlers for "/auth/" routes.
@@ -80,12 +78,12 @@ var authHandlers = struct {
 func ChangePassword(w http.ResponseWriter, r *http.Request) {
 	user, err := authenticateUser(r)
 	if err != nil {
-		showError(w, err, http.StatusUnauthorized)
+		mustShowError(w, err, http.StatusUnauthorized)
 		return
 	}
 	var password models.NewPassword
 	if err := readJSONRequest(r, &password); err != nil {
-		showError(w, err, http.StatusUnprocessableEntity)
+		mustShowError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
 
@@ -97,10 +95,10 @@ func ChangePassword(w http.ResponseWriter, r *http.Request) {
 		interactors.ErrNoPasswordProvidedDuringChange,
 		interactors.ErrMissingNewAuthParams,
 		interactors.ErrPasswordIncorrect:
-		showError(w, err, http.StatusUnauthorized)
+		mustShowError(w, err, http.StatusUnauthorized)
 		return
 	default:
-		showError(w, err, http.StatusInternalServerError)
+		mustShowError(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -116,18 +114,18 @@ func ChangePassword(w http.ResponseWriter, r *http.Request) {
 func UpdateUser(w http.ResponseWriter, r *http.Request) {
 	user, err := authenticateUser(r)
 	if err != nil {
-		showError(w, err, http.StatusUnauthorized)
+		mustShowError(w, err, http.StatusUnauthorized)
 		return
 	}
 	p := models.Params{}
 	if err := readJSONRequest(r, &p); err != nil {
-		showError(w, err, http.StatusUnprocessableEntity)
+		mustShowError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
 	logger.LogIfDebug("Request:", p)
 
 	if err := user.UpdateParams(p); err != nil {
-		showError(w, err, http.StatusInternalServerError)
+		mustShowError(w, err, http.StatusInternalServerError)
 		return
 	}
 	writeJSONResponse(w, http.StatusAccepted, nil)
@@ -138,13 +136,13 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 func RegisterUser(w http.ResponseWriter, r *http.Request) {
 	var user = models.NewUser()
 	if err := readJSONRequest(r, &user); err != nil {
-		showError(w, err, http.StatusUnprocessableEntity)
+		mustShowError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
 	logger.LogIfDebug("Request:", user)
 	token, err := interactors.RegisterUser(user)
 	if err != nil {
-		showError(w, err, http.StatusUnprocessableEntity)
+		mustShowError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
 	writeJSONResponse(
@@ -159,13 +157,13 @@ func RegisterUser(w http.ResponseWriter, r *http.Request) {
 func LoginUser(w http.ResponseWriter, r *http.Request) {
 	var user = models.NewUser()
 	if err := readJSONRequest(r, &user); err != nil {
-		showError(w, err, http.StatusUnprocessableEntity)
+		mustShowError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
 	logger.LogIfDebug("Request:", user)
 	token, err := interactors.LoginUser(*user, user.Email, user.Password)
 	if err != nil {
-		showError(w, err, http.StatusUnauthorized)
+		mustShowError(w, err, http.StatusUnauthorized)
 		return
 	}
 	writeJSONResponse(
@@ -183,14 +181,14 @@ func GetParams(w http.ResponseWriter, r *http.Request) {
 	var params models.Params
 	var err error
 	if params, err = interactors.MakeAuthParams(email); err == interactors.ErrInvalidEmail {
-		showError(w, err, http.StatusUnauthorized)
+		mustShowError(w, err, http.StatusUnauthorized)
 		return
 	} else if err != nil {
-		showError(w, err, http.StatusInternalServerError)
+		mustShowError(w, err, http.StatusInternalServerError)
 		return
 	}
 	if v := params.Version; v == "" {
-		showError(w, fmt.Errorf("Invalid email or password"), http.StatusNotFound)
+		mustShowError(w, fmt.Errorf("Invalid email or password"), http.StatusNotFound)
 		return
 	}
 	content, _ := json.MarshalIndent(params, "", "  ")
@@ -212,18 +210,18 @@ var itemsHandlers = struct {
 func SyncItems(w http.ResponseWriter, r *http.Request) {
 	user, err := authenticateUser(r)
 	if err != nil {
-		showError(w, err, http.StatusUnauthorized)
+		mustShowError(w, err, http.StatusUnauthorized)
 		return
 	}
 	var request itemsync.Request
 	if err := readJSONRequest(r, &request); err != nil {
-		showError(w, err, http.StatusUnprocessableEntity)
+		mustShowError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
 	logger.LogIfDebug("Request:", request)
 	response, err := itemsync.SyncUserItems(*user, request)
 	if err != nil {
-		showError(w, err, http.StatusInternalServerError)
+		mustShowError(w, err, http.StatusInternalServerError)
 		return
 	}
 	content, _ := json.MarshalIndent(response, "", "  ")
@@ -236,7 +234,7 @@ func SyncItems(w http.ResponseWriter, r *http.Request) {
 func BackupItems(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
-		showError(w, err, http.StatusInternalServerError)
+		mustShowError(w, err, http.StatusInternalServerError)
 		return
 	}
 	fmt.Printf("%+v\n", r.Form)
