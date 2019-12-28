@@ -194,16 +194,20 @@ func (i *Item) IsDailyBackupExtension() bool {
 type Items []Item
 
 func (items *Items) Delete(uuid string) {
-	// NOTE: if Items was a slice of Item pointers or any Item field is a
-	// pointer, this could lead to memory leaks.
+	var found bool
 	pos := 0
 	for i, item := range *items {
 		if item.UUID == uuid {
 			pos = i
+			found = true
 			break
 		}
 	}
-	(*items) = append((*items)[:pos], (*items)[pos+1:]...)
+	if found {
+		// NOTE: if Items was a slice of Item pointers or any Item field is a
+		// pointer, this could lead to memory leaks.
+		*items = append((*items)[:pos], (*items)[pos+1:]...)
+	}
 }
 
 func (items Items) ComputeHashDigest() string {

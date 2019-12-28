@@ -197,7 +197,7 @@ func (u *User) LoadActiveItems() (items Items, err error) {
 		WHERE user_uuid=? AND content_type IS NOT '' AND deleted = ?
 		ORDER BY updated_at DESC`,
 		&items,
-		u.UUID, "SF|Extension", false,
+		u.UUID, false,
 	)
 	return
 }
