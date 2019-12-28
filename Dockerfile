@@ -3,18 +3,12 @@ FROM golang:alpine AS build-env
 RUN apk update && apk --no-cache add gcc g++ git
 WORKDIR /src
 
-ARG BUILD_TIME
-ARG GIT_BRANCH
-ARG SF_VERSION
-
-RUN git clone --branch $GIT_BRANCH \
-	--depth 1 \
-	https://github.com/rafaelespinoza/standardfile.git \
-	/src
+# NOTE: Use the Makefile to place all the relevant files for copying.
+COPY go.mod /src
 RUN go mod download
 RUN go mod verify
-RUN go build -ldflags="-w -X main.BuildTime=${BUILD_TIME} -X main.Version=${SF_VERSION}" \
-	-o /src/bin/sf
+COPY . /src
+RUN go build -o /src/bin/sf
 
 # final stage
 FROM alpine
@@ -23,4 +17,4 @@ WORKDIR /app
 COPY --from=build-env /src/bin/sf /src/config/standardfile.json /app/
 VOLUME /data
 EXPOSE 8888
-ENTRYPOINT ["/app/sf", "-config", "/app/standardfile.json", "-db", "/data/sf.db", "api"]
+ENTRYPOINT ["/app/sf", "-config", "/app/standardfile.json", "-cors", "-db", "/data/sf.db", "api"]

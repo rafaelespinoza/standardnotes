@@ -1,3 +1,4 @@
+BUILD_DIR=/tmp/standardfile
 IMG_NAME=rafaele/standardfile
 IMG_TAG=latest
 LOCAL_DATA_DIR=$(HOME)/.sf
@@ -12,11 +13,10 @@ install:
 	GO111MODULE=on go mod download && go mod verify && go install -i -v .
 
 docker-build:
-	docker build \
-		--build-arg BUILD_TIME=$(shell date +%FT%T%z) \
-		--build-arg GIT_BRANCH=$(shell git branch --show-current) \
-		--build-arg SF_VERSION=$(shell git rev-parse --short HEAD) \
-		-t $(IMG_NAME) .
+	mkdir -p $(BUILD_DIR)
+	cp --parents $(shell git ls-files) $(BUILD_DIR)
+	cd $(BUILD_DIR)
+	docker build -t $(IMG_NAME) .
 
 docker-run:
 	mkdir -p $(LOCAL_DATA_DIR)
