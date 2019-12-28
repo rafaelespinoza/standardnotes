@@ -9,11 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rafaelespinoza/standardfile/logger"
-
-	// "github.com/kisielk/sqlstruct"
 	"github.com/google/uuid"
 	"github.com/rafaelespinoza/standardfile/db"
+	"github.com/rafaelespinoza/standardfile/logger"
 )
 
 // Item - is an item type
@@ -27,6 +25,24 @@ type Item struct {
 	Deleted     bool      `json:"deleted"`
 	CreatedAt   time.Time `json:"created_at" sql:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at" sql:"updated_at"`
+}
+
+// LoadItemByUUID fetches a User from the DB.
+func LoadItemByUUID(uuid string) (item *Item, err error) {
+	if uuid == "" {
+		err = fmt.Errorf("uuid is empty")
+		return
+	}
+	item = &Item{} // can't be nil to start out
+	err = db.SelectStruct(
+		`SELECT * FROM items WHERE uuid = ?`,
+		item,
+		uuid,
+	)
+	if err != nil {
+		item = nil
+	}
+	return
 }
 
 // Save either adds a new Item to the DB or updates an existing Item in the DB.
@@ -105,12 +121,6 @@ func (i *Item) Exists() (bool, error) {
 		return false, nil
 	}
 	return db.SelectExists("SELECT uuid FROM items WHERE uuid=?", i.UUID)
-}
-
-// LoadByUUID populates the Item's fields by querying the DB.
-func (i *Item) LoadByUUID(uuid string) (err error) {
-	_, err = db.SelectStruct("SELECT * FROM items WHERE uuid=?", i, uuid)
-	return
 }
 
 // MergeProtected reconciles Item fields in preparation for sync updates while

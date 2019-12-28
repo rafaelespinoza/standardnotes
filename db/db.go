@@ -7,7 +7,7 @@ import (
 	"reflect"
 
 	"github.com/kisielk/sqlstruct"
-	//importing init from sqlite3
+	// initialize driver
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -127,32 +127,47 @@ func SelectExists(query string, args ...interface{}) (exists bool, err error) {
 	return
 }
 
-//SelectStruct - returns selected result as struct
-func SelectStruct(query string, obj interface{}, args ...interface{}) (interface{}, error) {
-	destv := reflect.ValueOf(obj)
-	elem := destv.Elem()
-	typeOfObj := elem.Type()
+// SelectStruct attempts to select one matching row and fill the result into
+// dest. The dest argument should be a pointer to some intended value. If there
+// are no rows, then it returns a sql.ErrNoRows error.
+func SelectStruct(query string, dest interface{}, args ...interface{}) (err error) {
+	var stmt *sql.Stmt
+	var rows *sql.Rows
+	var numRows int
 
-	var values []interface{}
-	for i := 0; i < elem.NumField(); i++ {
-		values = append(values, elem.FieldByName(typeOfObj.Field(i).Name).Addr().Interface())
-	}
+	defer func() {
+		stmt.Close()
+		rows.Close()
+	}()
 
-	stmt := database.prepare(query)
-	defer stmt.Close()
+	stmt = database.prepare(query)
 
-	rows, err := stmt.Query(args...)
-	defer rows.Close()
-	if err != nil {
-		return nil, err
+	if rows, err = stmt.Query(args...); err != nil {
+		return
 	}
 	for rows.Next() {
-		err = sqlstruct.Scan(destv.Interface(), rows)
+		// this is a hacky way to limit results to one row. Currently, the
+		// sqlstruct library does not let you use the sql.QueryRow function,
+		// which would be a better choice here. It likely won't ever support it.
+		// See issue #5 in that repo for some details.
+		if numRows > 1 {
+			return
+		}
+		if err = sqlstruct.Scan(dest, rows); err != nil {
+			return
+		}
+		numRows++
 	}
-	return obj, err
+	if err = rows.Err(); err != nil {
+		return
+	} else if numRows < 1 {
+		err = sql.ErrNoRows
+		return
+	}
+	return
 }
 
-//Select - selects multiple results from the DB
+// Select selects multiple results from the DB.
 func Select(query string, out interface{}, args ...interface{}) (err error) {
 	stmt := database.prepare(query)
 	defer stmt.Close()

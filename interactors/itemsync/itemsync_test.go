@@ -117,10 +117,11 @@ func TestDoItemSync(t *testing.T) {
 		}
 	}
 
+	var err error
+
 	// test Update behavior
-	updatedItemToChange := &models.Item{}
-	updatedItemToChange.UUID = itemToChange.UUID
-	if err := updatedItemToChange.LoadByUUID(updatedItemToChange.UUID); err != nil {
+	var updatedItemToChange *models.Item
+	if updatedItemToChange, err = models.LoadItemByUUID(itemToChange.UUID); err != nil {
 		t.Fatalf("did not expect error fetching 'changed' item; got %v", err)
 	}
 	if updatedItemToChange.Content != "bravo" {
@@ -131,9 +132,8 @@ func TestDoItemSync(t *testing.T) {
 	}
 
 	// test Delete behavior
-	updatedDeletedItem := &models.Item{}
-	updatedDeletedItem.UUID = itemToMarkDeleted.UUID
-	if err := updatedDeletedItem.LoadByUUID(updatedDeletedItem.UUID); err != nil {
+	var updatedDeletedItem *models.Item
+	if updatedDeletedItem, err = models.LoadItemByUUID(itemToMarkDeleted.UUID); err != nil {
 		t.Fatalf("did not expect error fetching 'deleted' item; got %v", err)
 	}
 	if !updatedDeletedItem.Deleted {

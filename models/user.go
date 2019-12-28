@@ -45,6 +45,24 @@ func (u *User) GetEmail() string   { return u.Email }
 func (u *User) GetPwNonce() string { return u.PwNonce }
 func (u *User) GetUUID() string    { return u.UUID }
 
+// LoadUserByUUID fetches a User from the DB.
+func LoadUserByUUID(uuid string) (user *User, err error) {
+	if uuid == "" {
+		err = fmt.Errorf("uuid is empty")
+		return
+	}
+	user = NewUser() // can't be nil to start out
+	err = db.SelectStruct(
+		`SELECT * FROM users WHERE uuid = ?`,
+		user,
+		uuid,
+	)
+	if err != nil {
+		user = nil
+	}
+	return
+}
+
 // UpdatePassword updates the user's password.
 func (u *User) UpdatePassword(np NewPassword) error {
 	if u.UUID == "" {
@@ -105,12 +123,6 @@ func (u *User) Exists() (bool, error) {
 	return db.SelectExists("SELECT uuid FROM users WHERE email=?", u.Email)
 }
 
-// LoadByUUID populates the User's fields by querying the DB.
-func (u *User) LoadByUUID(uuid string) (err error) {
-	_, err = db.SelectStruct("SELECT * FROM users WHERE uuid=?", u, uuid)
-	return
-}
-
 // Validate checks the jwt for a valid password.
 func (u *User) Validate(password string) bool {
 	return password == u.Password
@@ -125,7 +137,7 @@ func (u User) MakeSaferCopy() User {
 
 // LoadByEmail populates the user fields with a DB lookup.
 func (u *User) LoadByEmail(email string) error {
-	_, err := db.SelectStruct("SELECT * FROM users WHERE email=?", u, email)
+	err := db.SelectStruct("SELECT * FROM users WHERE email=?", u, email)
 	if err != nil {
 		logger.LogIfDebug(err)
 	}
@@ -169,7 +181,7 @@ func (u *User) Create() error {
 }
 
 func (u *User) LoadByEmailAndPassword(email, password string) (err error) {
-	_, err = db.SelectStruct(
+	err = db.SelectStruct(
 		"SELECT * FROM users WHERE email=? AND password=?",
 		u, email, Hash(password),
 	)

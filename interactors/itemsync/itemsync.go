@@ -163,9 +163,8 @@ func findCheckItem(incomingItem models.Item) (item *models.Item, err error) {
 		item = &incomingItem
 		return
 	} else {
-		item = &models.Item{}
 		// hydrate item fields with DB values
-		if err = item.LoadByUUID(incomingItem.UUID); err != nil {
+		if item, err = models.LoadItemByUUID(incomingItem.UUID); err != nil {
 			return
 		}
 	}
