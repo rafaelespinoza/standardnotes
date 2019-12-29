@@ -1,9 +1,14 @@
 package itemsync
 
 import (
+	"encoding/base64"
+	"fmt"
 	"math"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/rafaelespinoza/standardfile/logger"
 	"github.com/rafaelespinoza/standardfile/models"
 )
 
@@ -41,13 +46,13 @@ func SyncUserItems(user models.User, req Request) (res *Response, err error) {
 		cursorTime = res.Retrieved[len(res.Retrieved)-1].UpdatedAt
 	}
 	if !cursorTime.IsZero() {
-		res.CursorToken = models.TimeToToken(cursorTime)
+		res.CursorToken = encodeTimeToken(cursorTime)
 	}
 
 	if len(res.Saved) < 1 {
-		res.SyncToken = models.TimeToToken(time.Now())
+		res.SyncToken = encodeTimeToken(time.Now())
 	} else {
-		res.SyncToken = models.TimeToToken(res.Saved[0].UpdatedAt)
+		res.SyncToken = encodeTimeToken(res.Saved[0].UpdatedAt)
 	}
 
 	err = enqueueRealtimeExtensionJobs(user, req.Items)
@@ -88,10 +93,10 @@ func (r *Response) doItemSync(user models.User, req Request) (err error) {
 
 	// prepare a sync by loading the user's items from the DB.
 	if req.CursorToken != "" {
-		date := models.TokenToTime(req.CursorToken)
+		date := decodeTimeToken(req.CursorToken)
 		retrieved, err = user.LoadItemsAfter(date, true, req.ContentType, limit)
 	} else if req.SyncToken != "" {
-		date := models.TokenToTime(req.SyncToken)
+		date := decodeTimeToken(req.SyncToken)
 		retrieved, err = user.LoadItemsAfter(date, false, req.ContentType, limit)
 	} else {
 		retrieved, err = user.LoadAllItems(req.ContentType, limit)
@@ -191,4 +196,36 @@ func findCheckItem(incomingItem models.Item) (item *models.Item, err error) {
 	}
 
 	return
+}
+
+// encodeTimeToken generates a token for the time. This is not the same kind of
+// token used in authentication.
+func encodeTimeToken(date time.Time) string {
+	return base64.URLEncoding.EncodeToString(
+		[]byte(
+			fmt.Sprintf(
+				"1:%d", // TODO: make use of "version" 1 and 2. (part before :)
+				date.UnixNano(),
+			),
+		),
+	)
+}
+
+// decodeTimeToken converts a token to a time. This is not the same kind of token
+// used in authentication.
+func decodeTimeToken(token string) time.Time {
+	decoded, err := base64.URLEncoding.DecodeString(token)
+	if err != nil {
+		logger.LogIfDebug(err)
+		return time.Now()
+	}
+	parts := strings.Split(string(decoded), ":")
+	str, err := strconv.ParseUint(parts[1], 10, 64)
+	if err != nil {
+		logger.LogIfDebug(err)
+		return time.Now()
+	}
+	// TODO: output "version" 1, 2 differently. See
+	// `lib/sync_engine/abstract/sync_manager.rb` in the ruby sync-server
+	return time.Time(time.Unix(0, int64(str)))
 }
