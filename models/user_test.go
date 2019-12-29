@@ -101,7 +101,6 @@ func TestUserMakeSaferCopy(t *testing.T) {
 		PwCost:    123,
 		PwKeySize: 456,
 		PwNonce:   "stub_password_nonce",
-		PwAuth:    "stub_password_auth",
 		PwSalt:    "stub_password_salt",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -117,7 +116,6 @@ func TestUserMakeSaferCopy(t *testing.T) {
 		PwCost:    123,
 		PwKeySize: 456,
 		PwNonce:   "",
-		PwAuth:    "stub_password_auth",
 		PwSalt:    "stub_password_salt",
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
@@ -261,10 +259,6 @@ func compareUsers(t *testing.T, a, b *models.User, checkTimestamps bool) (ok boo
 	}
 	if a.PwNonce != b.PwNonce {
 		t.Errorf("PwNonce different; a: %q, b: %q", a.PwNonce, b.PwNonce)
-		ok = false
-	}
-	if a.PwAuth != b.PwAuth {
-		t.Errorf("PwAuth different; a: %q, b: %q", a.PwAuth, b.PwAuth)
 		ok = false
 	}
 	if a.PwSalt != b.PwSalt {

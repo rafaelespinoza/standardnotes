@@ -33,7 +33,6 @@ CREATE TABLE IF NOT EXISTS "users" (
     "pw_cost" integer NOT NULL DEFAULT 5000,
     "pw_key_size" integer NOT NULL DEFAULT 512,
     "pw_nonce" varchar(255) NOT NULL,
-    "pw_auth" varchar(255) NOT NULL,
     "pw_salt" varchar(255) NOT NULL,
     "created_at" timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL,
     "updated_at" timestamp DEFAULT CURRENT_TIMESTAMP);

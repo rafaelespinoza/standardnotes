@@ -33,7 +33,6 @@ func getMigrations() []m.Migration {
 		{
 			ID: 1,
 			Up: m.Queries([]string{
-				"ALTER TABLE users ADD COLUMN pw_auth varchar(255);",
 				"ALTER TABLE users ADD COLUMN pw_salt varchar(255);",
 			}),
 			Down: func(tx *sql.Tx) error {

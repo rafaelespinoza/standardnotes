@@ -25,7 +25,7 @@ var (
 	)
 )
 
-func MakeAuthParams(email string) (params models.Params, err error) {
+func MakeAuthParams(email string) (params models.PwGenParams, err error) {
 	if err = validateEmail(email); err != nil {
 		return
 	}
@@ -33,7 +33,7 @@ func MakeAuthParams(email string) (params models.Params, err error) {
 	if err = user.LoadByEmail(email); err != nil {
 		return
 	}
-	params = models.MakeAuthParams(*user)
+	params = models.MakePwGenParams(*user)
 	return
 }
 
@@ -124,7 +124,10 @@ func ChangeUserPassword(user *models.User, password models.NewPassword) (token s
 		return
 	}
 
-	if err = user.UpdatePassword(password); err != nil {
+	updates := user.MakeSaferCopy()
+	updates.Password = models.Hash(password.NewPassword)
+	updates.PwNonce = user.PwNonce
+	if err = user.Update(updates); err != nil {
 		return
 	}
 

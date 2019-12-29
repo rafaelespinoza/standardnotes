@@ -5,6 +5,7 @@ import (
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/rafaelespinoza/standardfile/db"
+	"github.com/rafaelespinoza/standardfile/interactors"
 	"github.com/rafaelespinoza/standardfile/interactors/token"
 	"github.com/rafaelespinoza/standardfile/models"
 )
@@ -120,7 +121,8 @@ func TestAuthenticateUser(t *testing.T) {
 				t.Fatal(err)
 			}
 			// make a legit token stale by updating password
-			if err = knownUser.UpdatePassword(
+			if _, err = interactors.ChangeUserPassword(
+				&knownUser,
 				models.NewPassword{
 					User:            knownUser,
 					CurrentPassword: knownUser.Password,

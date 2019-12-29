@@ -12,6 +12,7 @@ import (
 	"github.com/rafaelespinoza/standardfile/logger"
 )
 
+// A User is the application's end user.
 type User struct {
 	UUID      string    `json:"uuid"`
 	Email     string    `json:"email"`
@@ -21,7 +22,6 @@ type User struct {
 	PwCost    int       `json:"pw_cost"     sql:"pw_cost"`
 	PwKeySize int       `json:"pw_key_size" sql:"pw_key_size"`
 	PwNonce   string    `json:"pw_nonce,omitempty"    sql:"pw_nonce"`
-	PwAuth    string    `json:"pw_auth,omitempty"     sql:"pw_auth"`
 	PwSalt    string    `json:"pw_salt,omitempty"     sql:"pw_salt"`
 	CreatedAt time.Time `json:"created_at"  sql:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"  sql:"updated_at"`
@@ -29,14 +29,14 @@ type User struct {
 
 // NewUser initializes a User with default values.
 func NewUser() *User {
-	user := User{}
-	user.PwCost = 100000
-	user.PwAlg = "sha512"
-	user.PwKeySize = 512
-	user.PwFunc = "pbkdf2"
-	user.CreatedAt = time.Now()
-	user.UpdatedAt = time.Now()
-	return &user
+	return &User{
+		PwCost:    100000,
+		PwAlg:     "sha512",
+		PwKeySize: 512,
+		PwFunc:    "pbkdf2",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
 }
 
 var _ db.MigratingUser = (*User)(nil)
@@ -48,7 +48,7 @@ func (u *User) GetUUID() string    { return u.UUID }
 // LoadUserByUUID fetches a User from the DB.
 func LoadUserByUUID(uuid string) (user *User, err error) {
 	if uuid == "" {
-		err = fmt.Errorf("uuid is empty")
+		err = ErrEmptyUUID
 		return
 	}
 	user = NewUser() // can't be nil to start out
@@ -63,52 +63,33 @@ func LoadUserByUUID(uuid string) (user *User, err error) {
 	return
 }
 
-// UpdatePassword updates the user's password.
-func (u *User) UpdatePassword(np NewPassword) error {
+// Update performs a db update on the User.
+func (u *User) Update(updates User) (err error) {
 	if u.UUID == "" {
 		return fmt.Errorf("Unknown user")
 	}
+	dupe := u.makeUnsafeCopy() // in case of db error, rollback in-memory.
 
-	u.Password = Hash(np.NewPassword)
-	u.PwCost = np.PwCost
-	u.PwSalt = np.PwSalt
-	u.PwNonce = np.PwNonce
-
+	u.Password = updates.Password
+	u.PwAlg = updates.PwAlg
+	u.PwCost = updates.PwCost
+	u.PwFunc = updates.PwFunc
+	u.PwKeySize = updates.PwKeySize
+	u.PwNonce = updates.PwNonce
+	u.PwSalt = updates.PwSalt
 	u.UpdatedAt = time.Now()
-	// TODO: validate incoming password params
-	err := db.Query(`
+
+	err = db.Query(`
 		UPDATE users
-		SET password=?, pw_cost=?, pw_salt=?, pw_nonce=?, updated_at=?
+		SET password=?, pw_alg=?, pw_cost=?, pw_func=?, pw_key_size=?, pw_nonce=?, pw_salt=?, updated_at=?
 		WHERE uuid=?`,
-		u.Password, u.PwCost, u.PwSalt, u.PwNonce, u.UpdatedAt,
+		u.Password, u.PwAlg, u.PwCost, u.PwFunc, u.PwKeySize, u.PwNonce, u.PwSalt, u.UpdatedAt,
 		u.UUID,
 	)
 
 	if err != nil {
 		logger.LogIfDebug(err)
-		return err
-	}
-
-	return nil
-}
-
-// UpdateParams - update params
-func (u *User) UpdateParams(p Params) error {
-	if u.UUID == "" {
-		return fmt.Errorf("Unknown user")
-	}
-
-	u.UpdatedAt = time.Now()
-	err := db.Query(`
-		UPDATE users
-		SET pw_func=?, pw_alg=?, pw_cost=?, pw_key_size=?, pw_salt=?, updated_at=?
-		WHERE uuid=?`,
-		u.PwFunc, u.PwAlg, u.PwCost, u.PwKeySize, u.PwSalt, time.Now(),
-		u.UUID,
-	)
-
-	if err != nil {
-		logger.LogIfDebug(err)
+		u = &dupe
 		return err
 	}
 
@@ -130,6 +111,23 @@ func (u *User) Validate(password string) bool {
 
 // MakeSaferCopy duplicates the User value, but excludes some sensitive fields.
 func (u User) MakeSaferCopy() User {
+	return u.duplicate(true)
+}
+
+// makeUnsafeCopy returns a duplicate User, including the sensitive fields.
+func (u User) makeUnsafeCopy() User {
+	return u.duplicate(false)
+}
+
+// duplicate returns a deep copy of the User. As it's currently implemented, it
+// relies on value receiver semantics to copy the fields. So if any User fields
+// become pointers or any kind of "reference type", such as map, slice, channel,
+// the way it's implemented could lead to memory leaks.
+func (u User) duplicate(includeSensitive bool) User {
+	if !includeSensitive {
+		return u
+	}
+
 	u.Password = ""
 	u.PwNonce = ""
 	return u
@@ -168,10 +166,10 @@ func (u *User) Create() error {
 	err := db.Query(`
 		INSERT INTO users (
 			uuid, email, password, pw_func, pw_alg, pw_cost, pw_key_size,
-			pw_nonce, pw_auth, pw_salt, created_at, updated_at
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+			pw_nonce, pw_salt, created_at, updated_at
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
 		u.UUID, u.Email, u.Password, u.PwFunc, u.PwAlg, u.PwCost, u.PwKeySize,
-		u.PwNonce, u.PwAuth, u.PwSalt, u.CreatedAt, u.UpdatedAt)
+		u.PwNonce, u.PwSalt, u.CreatedAt, u.UpdatedAt)
 
 	if err != nil {
 		logger.LogIfDebug(err)
@@ -257,23 +255,24 @@ func (u *User) LoadAllItems(contentType string, limit int) (items Items, err err
 	return
 }
 
-// Params is the set of authentication parameters for the user.
-type Params struct {
-	PwFunc     string `json:"pw_func"     sql:"pw_func"`
-	PwAlg      string `json:"pw_alg"      sql:"pw_alg"`
-	PwCost     int    `json:"pw_cost"     sql:"pw_cost"`
-	PwKeySize  int    `json:"pw_key_size" sql:"pw_key_size"`
-	PwSalt     string `json:"pw_salt"     sql:"pw_salt"`
-	PwNonce    string `json:"pw_nonce"    sql:"pw_nonce"`
+// PwGenParams is a set of authentication parameters used by the client to
+// generate user passwords.
+type PwGenParams struct {
+	PwFunc     string `json:"pw_func"`
+	PwAlg      string `json:"pw_alg"`
+	PwCost     int    `json:"pw_cost"`
+	PwKeySize  int    `json:"pw_key_size"`
+	PwSalt     string `json:"pw_salt"`
+	PwNonce    string `json:"pw_nonce"`
 	Version    string `json:"version"`
 	Identifier string `json:"identifier"` // should be email address
 }
 
-// MakeAuthParams constructs authentication parameters from User fields. NOTE:
+// MakePwGenParams constructs authentication parameters from User fields. NOTE:
 // it's tempting to put this into the interactors package, but you can't because
 // you'd get an import cycle.
-func MakeAuthParams(u User) Params {
-	var params Params
+func MakePwGenParams(u User) PwGenParams {
+	var params PwGenParams
 
 	if u.Email == "" {
 		return params

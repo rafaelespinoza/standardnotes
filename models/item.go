@@ -14,7 +14,7 @@ import (
 	"github.com/rafaelespinoza/standardfile/logger"
 )
 
-// Item - is an item type
+// An Item is any kind of StandardNotes item that belongs to a User.
 type Item struct {
 	UUID        string    `json:"uuid"`
 	UserUUID    string    `json:"user_uuid"    sql:"user_uuid"`
@@ -30,7 +30,7 @@ type Item struct {
 // LoadItemByUUID fetches a User from the DB.
 func LoadItemByUUID(uuid string) (item *Item, err error) {
 	if uuid == "" {
-		err = fmt.Errorf("uuid is empty")
+		err = ErrEmptyUUID
 		return
 	}
 	item = &Item{} // can't be nil to start out
@@ -58,6 +58,7 @@ func (i *Item) Save() error {
 	return i.Update()
 }
 
+// Create adds the Item to the DB.
 func (i *Item) Create() error {
 	if i.UUID == "" {
 		id := uuid.New()
@@ -74,18 +75,21 @@ func (i *Item) Create() error {
 	)
 }
 
+// Update updates the Item in the DB.
 func (i *Item) Update() error {
 	i.UpdatedAt = time.Now()
 	logger.LogIfDebug("Update:", i.UUID)
 	return db.Query(`
 		UPDATE items
-		SET content=?, enc_item_key=?, auth_hash=?, deleted=?, updated_at=?
+		SET content=?, content_type=?, enc_item_key=?, auth_hash=?, deleted=?, updated_at=?
 		WHERE uuid=? AND user_uuid=?`,
-		i.Content, i.EncItemKey, i.AuthHash, i.Deleted, i.UpdatedAt,
+		i.Content, i.ContentType, i.EncItemKey, i.AuthHash, i.Deleted, i.UpdatedAt,
 		i.UUID, i.UserUUID,
 	)
 }
 
+// Delete performs a "soft delete" on the Item. It is not removed from the DB,
+// but its fields are set to empty and its Deleted field is set to true.
 func (i *Item) Delete() error {
 	if i.UUID == "" {
 		return fmt.Errorf("attempted to delete non-existent item")
@@ -94,6 +98,7 @@ func (i *Item) Delete() error {
 	i.EncItemKey = ""
 	i.AuthHash = ""
 	i.UpdatedAt = time.Now()
+	i.Deleted = true
 
 	return db.Query(`
 		UPDATE items
@@ -103,6 +108,7 @@ func (i *Item) Delete() error {
 	)
 }
 
+// Copy duplicates the Item, generates a new UUID and saves it to the DB.
 func (i Item) Copy() (Item, error) {
 	out := uuid.New()
 	i.UUID = uuid.Must(out, nil).String()

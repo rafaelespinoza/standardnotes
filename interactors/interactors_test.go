@@ -23,7 +23,7 @@ func TestMakeAuthParams(t *testing.T) {
 		if err = user.Create(); err != nil {
 			t.Fatal(err)
 		}
-		var params models.Params
+		var params models.PwGenParams
 		if params, err = interactors.MakeAuthParams(user.Email); err != nil {
 			t.Error(err)
 		}

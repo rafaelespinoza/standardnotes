@@ -117,14 +117,14 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 		mustShowError(w, err, http.StatusUnauthorized)
 		return
 	}
-	p := models.Params{}
+	p := models.User{}
 	if err := readJSONRequest(r, &p); err != nil {
 		mustShowError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
-	logger.LogIfDebug("Request:", p)
+	logger.LogIfDebug("Request: ", p)
 
-	if err := user.UpdateParams(p); err != nil {
+	if err := user.Update(p); err != nil {
 		mustShowError(w, err, http.StatusInternalServerError)
 		return
 	}
@@ -178,7 +178,7 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 func GetParams(w http.ResponseWriter, r *http.Request) {
 	email := r.FormValue("email")
 	logger.LogIfDebug("Request:", string(email))
-	var params models.Params
+	var params models.PwGenParams
 	var err error
 	if params, err = interactors.MakeAuthParams(email); err == interactors.ErrInvalidEmail {
 		mustShowError(w, err, http.StatusUnauthorized)

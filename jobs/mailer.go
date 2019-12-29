@@ -17,7 +17,7 @@ func PerformMailerJob(params MailerJobParams) (err error) {
 	var user models.User
 	var contents struct {
 		Items      models.Items
-		AuthParams models.Params
+		AuthParams models.PwGenParams
 	}
 	var attachment struct {
 		Filename string
@@ -50,7 +50,7 @@ func PerformMailerJob(params MailerJobParams) (err error) {
 		attachment.Content = data
 	}
 
-	contents.AuthParams = models.MakeAuthParams(user)
+	contents.AuthParams = models.MakePwGenParams(user)
 	attachment.Filename = fmt.Sprintf("SN-Data-%s.txt", time.Now().Format("20060102015405"))
 	attachment.MimeType = "application/json"
 	// TODO: send email to user with attached JSON file.
