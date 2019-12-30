@@ -27,10 +27,10 @@ type Item struct {
 	UpdatedAt   time.Time `json:"updated_at" sql:"updated_at"`
 }
 
-// LoadItemByUUID fetches a User from the DB.
+// LoadItemByUUID fetches an Item from the DB.
 func LoadItemByUUID(uuid string) (item *Item, err error) {
 	if uuid == "" {
-		err = ErrEmptyUUID
+		err = fmt.Errorf("uuid is empty")
 		return
 	}
 	item = &Item{} // can't be nil to start out

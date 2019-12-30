@@ -29,8 +29,8 @@ func MakeAuthParams(email string) (params models.PwGenParams, err error) {
 	if err = validateEmail(email); err != nil {
 		return
 	}
-	user := models.NewUser()
-	if err = user.LoadByEmail(email); err != nil {
+	var user *models.User
+	if user, err = models.LoadUserByEmail(email); err != nil {
 		return
 	}
 	params = models.MakePwGenParams(*user)
@@ -51,19 +51,67 @@ func validateEmail(email string) error {
 	return nil
 }
 
-// LoginUser signs in the user. It returns a token on success, otherwise an error.
-func LoginUser(u models.User, email, password string) (token string, err error) {
-	if err = u.LoadByEmailAndPassword(email, password); err != nil {
+type RegisterUserParams struct {
+	API        string
+	Email      string
+	Identifier string
+	Password   string
+	PwCost     int    `json:"pw_cost"`
+	PwNonce    string `json:"pw_nonce"`
+	Version    string
+}
+
+// Register creates a new user and returns a token.
+func RegisterUser(params RegisterUserParams) (user *models.User, token string, err error) {
+	user = models.NewUser()
+	user.Email = params.Email
+	user.Password = params.Password
+	user.PwCost = params.PwCost
+	user.PwNonce = params.PwNonce
+	err = user.Create()
+	if err != nil {
+		user = nil
 		return
 	}
 
-	if u.UUID == "" {
+	password := user.PwHashState()
+	user, token, err = LoginUser(user.Email, &password)
+	if err != nil {
+		user = nil
+		err = fmt.Errorf("registration failed; %v", err)
+		return
+	}
+
+	if err = jobs.PerformRegistrationJob(
+		jobs.RegistrationJobParams{
+			Email:     user.Email,
+			CreatedAt: user.CreatedAt,
+		},
+	); err != nil {
+		// log it, but keep going
+		log.Printf("error performing job; %v\n", err)
+		err = nil
+	}
+	return
+}
+
+// LoginUser signs in the user. It returns a token on success, otherwise an error.
+func LoginUser(email string, password *models.PwHash) (user *models.User, token string, err error) {
+	password.Hash()
+	if user, err = models.LoadUserByEmailAndPassword(email, password.Value); err != nil {
+		err = fmt.Errorf("user not found or password wrong")
+		return
+	}
+
+	if user.UUID == "" {
+		user = nil
 		err = fmt.Errorf("invalid email or password")
 		return
 	}
 
-	token, err = models.EncodeToken(u)
+	token, err = models.EncodeToken(*user)
 	if err != nil {
+		user = nil
 		return
 	}
 
@@ -81,31 +129,8 @@ func handleSuccessfulAuthAttempt(u models.User) error {
 	return nil
 }
 
-// Register creates a new user and returns a token.
-func RegisterUser(u *models.User) (token string, err error) {
-	err = u.Create()
-	if err != nil {
-		return "", err
-	}
-
-	token, err = LoginUser(*u, u.Email, u.Password)
-	if err != nil {
-		err = fmt.Errorf("registration failed")
-		return
-	}
-
-	params := jobs.RegistrationJobParams{
-		Email:     u.Email,
-		CreatedAt: u.CreatedAt,
-	}
-	if err = jobs.PerformRegistrationJob(params); err != nil {
-		log.Printf("error performing job; %v\n", err)
-	}
-	return
-}
-
 func ChangeUserPassword(user *models.User, password models.NewPassword) (token string, err error) {
-	if len(password.CurrentPassword) == 0 {
+	if len(password.CurrentPassword.Value) == 0 {
 		err = ErrNoPasswordProvidedDuringChange
 		return
 	} else if len(password.PwNonce) == 0 {
@@ -113,7 +138,7 @@ func ChangeUserPassword(user *models.User, password models.NewPassword) (token s
 		return
 	}
 
-	if _, err = LoginUser(*user, password.Email, password.CurrentPassword); err != nil {
+	if _, _, err = LoginUser(password.Email, &password.CurrentPassword); err != nil {
 		if ierr := handleFailedAuthAttempt(*user); ierr != nil {
 			err = ierr
 		}
@@ -125,14 +150,21 @@ func ChangeUserPassword(user *models.User, password models.NewPassword) (token s
 	}
 
 	updates := user.MakeSaferCopy()
-	updates.Password = models.Hash(password.NewPassword)
+	password.NewPassword.Hash()
+	updates.Password = password.NewPassword.Value
 	updates.PwNonce = user.PwNonce
 	if err = user.Update(updates); err != nil {
 		return
 	}
 
 	// now login again with new password
-	if token, err = LoginUser(*user, user.Email, user.Password); err != nil {
+	newPassword := models.PwHash{
+		Value: user.Password,
+		// Don't rehash, login would fail. It was already hashed before updating
+		// user in DB.
+		Hashed: true,
+	}
+	if user, token, err = LoginUser(user.Email, &newPassword); err != nil {
 		err = ErrPasswordIncorrect
 		return
 	}

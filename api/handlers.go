@@ -8,7 +8,6 @@ import (
 
 	"github.com/rafaelespinoza/standardfile/interactors"
 	"github.com/rafaelespinoza/standardfile/interactors/itemsync"
-	"github.com/rafaelespinoza/standardfile/interactors/token"
 	"github.com/rafaelespinoza/standardfile/logger"
 	"github.com/rafaelespinoza/standardfile/models"
 )
@@ -55,7 +54,7 @@ func readJSONRequest(r *http.Request, dst interface{}) error {
 }
 
 func authenticateUser(r *http.Request) (*models.User, error) {
-	return token.AuthenticateUser(r.Header.Get("Authorization"))
+	return interactors.AuthenticateUser(r.Header.Get("Authorization"))
 }
 
 // authHandlers groups http handlers for "/auth/" routes.
@@ -134,20 +133,21 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 // RegisterUser is the registration handler.
 // POST /auth/register
 func RegisterUser(w http.ResponseWriter, r *http.Request) {
-	var user = models.NewUser()
-	if err := readJSONRequest(r, &user); err != nil {
+	var params interactors.RegisterUserParams
+
+	if err := readJSONRequest(r, &params); err != nil {
 		mustShowError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
-	logger.LogIfDebug("Request:", user)
-	token, err := interactors.RegisterUser(user)
+	logger.LogIfDebug("Request:", params)
+	user, token, err := interactors.RegisterUser(params)
 	if err != nil {
 		mustShowError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
 	writeJSONResponse(
 		w,
-		http.StatusCreated,
+		http.StatusOK,
 		map[string]interface{}{"token": token, "user": user.MakeSaferCopy()},
 	)
 }
@@ -155,13 +155,20 @@ func RegisterUser(w http.ResponseWriter, r *http.Request) {
 // LoginUser handles sign in.
 // POST /auth/sign_in
 func LoginUser(w http.ResponseWriter, r *http.Request) {
-	var user = models.NewUser()
-	if err := readJSONRequest(r, &user); err != nil {
+	var params struct {
+		API      string `json:"api"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := readJSONRequest(r, &params); err != nil {
 		mustShowError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
-	logger.LogIfDebug("Request:", user)
-	token, err := interactors.LoginUser(*user, user.Email, user.Password)
+	logger.LogIfDebug("Request:", params)
+	user, token, err := interactors.LoginUser(
+		params.Email,
+		&models.PwHash{Value: params.Password},
+	)
 	if err != nil {
 		mustShowError(w, err, http.StatusUnauthorized)
 		return

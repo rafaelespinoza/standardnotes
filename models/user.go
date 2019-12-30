@@ -1,14 +1,12 @@
 package models
 
 import (
-	"crypto/sha256"
 	"fmt"
-	"strings"
+	"regexp"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/rafaelespinoza/standardfile/db"
-	"github.com/rafaelespinoza/standardfile/encryption"
 	"github.com/rafaelespinoza/standardfile/logger"
 )
 
@@ -25,12 +23,15 @@ type User struct {
 	PwSalt    string    `json:"pw_salt,omitempty"     sql:"pw_salt"`
 	CreatedAt time.Time `json:"created_at"  sql:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"  sql:"updated_at"`
+
+	// passwordHashed tracks the hashing state for the Password field.
+	passwordHashed bool
 }
 
 // NewUser initializes a User with default values.
 func NewUser() *User {
 	return &User{
-		PwCost:    100000,
+		PwCost:    110000,
 		PwAlg:     "sha512",
 		PwKeySize: 512,
 		PwFunc:    "pbkdf2",
@@ -48,19 +49,93 @@ func (u *User) GetUUID() string    { return u.UUID }
 // LoadUserByUUID fetches a User from the DB.
 func LoadUserByUUID(uuid string) (user *User, err error) {
 	if uuid == "" {
-		err = ErrEmptyUUID
+		err = fmt.Errorf("uuid is empty")
 		return
 	}
 	user = NewUser() // can't be nil to start out
-	err = db.SelectStruct(
-		`SELECT * FROM users WHERE uuid = ?`,
-		user,
-		uuid,
-	)
-	if err != nil {
+	if err = user.fetchHydrate(`SELECT * FROM users WHERE uuid = ?`, uuid); err != nil {
 		user = nil
 	}
 	return
+}
+
+// LoadByEmail populates the user fields with a DB lookup.
+func LoadUserByEmail(email string) (user *User, err error) {
+	if verr := ValidateEmail(email); verr != nil {
+		err = verr
+		return
+	}
+	user = NewUser()
+	if err = user.fetchHydrate("SELECT * FROM users WHERE email=?", email); err != nil {
+		user = nil
+	}
+	return
+}
+
+// LoadUserByEmailAndPassword populates user fields by looking up the user email
+// and hashed password.
+func LoadUserByEmailAndPassword(email, password string) (user *User, err error) {
+	if email == "" || password == "" {
+		err = fmt.Errorf("email or password is empty")
+		return
+	}
+	user = NewUser()
+	if err = user.fetchHydrate(
+		"SELECT * FROM users WHERE email=? AND password=?",
+		email, password,
+	); err != nil {
+		user = nil
+	}
+	return
+}
+
+func (u *User) fetchHydrate(query string, args ...interface{}) (err error) {
+	if u == nil {
+		u = NewUser()
+	}
+	if err = db.SelectStruct(query, u, args...); err != nil {
+		logger.LogIfDebug(err)
+		return
+	}
+	// Assume the password stored in the DB is hashed.
+	u.passwordHashed = true
+	return
+}
+
+// Create saves the user to the DB.
+func (u *User) Create() error {
+	if u.UUID != "" {
+		return fmt.Errorf("cannot recreate existing user")
+	}
+
+	if u.Email == "" || u.Password == "" {
+		return fmt.Errorf("empty email or password")
+	}
+
+	if exists, err := u.Exists(); err != nil {
+		return err
+	} else if exists {
+		return fmt.Errorf("email is already registered")
+	}
+
+	id := uuid.New()
+	u.UUID = uuid.Must(id, nil).String()
+	u.Password = Hash(u.Password)
+	u.CreatedAt = time.Now()
+
+	err := db.Query(`
+		INSERT INTO users (
+			uuid, email, password, pw_func, pw_alg, pw_cost, pw_key_size,
+			pw_nonce, pw_salt, created_at, updated_at
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		u.UUID, u.Email, u.Password, u.PwFunc, u.PwAlg, u.PwCost, u.PwKeySize,
+		u.PwNonce, u.PwSalt, u.CreatedAt, u.UpdatedAt)
+
+	if err != nil {
+		logger.LogIfDebug(err)
+	}
+	u.passwordHashed = true
+	return err
 }
 
 // Update performs a db update on the User.
@@ -92,13 +167,14 @@ func (u *User) Update(updates User) (err error) {
 		u = &dupe
 		return err
 	}
-
+	u.passwordHashed = true
 	return nil
 }
 
 // Exists checks if the user exists in the DB.
 func (u *User) Exists() (bool, error) {
-	if u.UUID == "" {
+	if err := ValidateEmail(u.Email); err != nil {
+		// swallow this error, it doesn't answer the question asked by this method.
 		return false, nil
 	}
 	return db.SelectExists("SELECT uuid FROM users WHERE email=?", u.Email)
@@ -130,65 +206,13 @@ func (u User) duplicate(includeSensitive bool) User {
 
 	u.Password = ""
 	u.PwNonce = ""
+	u.passwordHashed = false
 	return u
 }
 
-// LoadByEmail populates the user fields with a DB lookup.
-func (u *User) LoadByEmail(email string) error {
-	err := db.SelectStruct("SELECT * FROM users WHERE email=?", u, email)
-	if err != nil {
-		logger.LogIfDebug(err)
-	}
-	return err
-}
-
-// Create saves the user to the DB.
-func (u *User) Create() error {
-	if u.UUID != "" {
-		return fmt.Errorf("cannot recreate existing user")
-	}
-
-	if u.Email == "" || u.Password == "" {
-		return fmt.Errorf("empty email or password")
-	}
-
-	if exists, err := u.Exists(); err != nil {
-		return err
-	} else if exists {
-		return fmt.Errorf("unable to register; already exists")
-	}
-
-	id := uuid.New()
-	u.UUID = uuid.Must(id, nil).String()
-	u.Password = Hash(u.Password)
-	u.CreatedAt = time.Now()
-
-	err := db.Query(`
-		INSERT INTO users (
-			uuid, email, password, pw_func, pw_alg, pw_cost, pw_key_size,
-			pw_nonce, pw_salt, created_at, updated_at
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-		u.UUID, u.Email, u.Password, u.PwFunc, u.PwAlg, u.PwCost, u.PwKeySize,
-		u.PwNonce, u.PwSalt, u.CreatedAt, u.UpdatedAt)
-
-	if err != nil {
-		logger.LogIfDebug(err)
-	}
-
-	return err
-}
-
-// LoadByEmailAndPassword populates user fields by looking up the email and
-// hashed password. The password argument should already be hashed.
-func (u *User) LoadByEmailAndPassword(email, password string) (err error) {
-	err = db.SelectStruct(
-		"SELECT * FROM users WHERE email=? AND password=?",
-		u, email, password,
-	)
-	if err != nil {
-		logger.LogIfDebug(err)
-	}
-	return
+// PwHashState can tell you whether or not the User's Password has been hashed.
+func (u *User) PwHashState() PwHash {
+	return PwHash{Value: u.Password, Hashed: u.passwordHashed}
 }
 
 func (u *User) LoadActiveItems() (items Items, err error) {
@@ -255,67 +279,29 @@ func (u *User) LoadAllItems(contentType string, limit int) (items Items, err err
 	return
 }
 
-// PwGenParams is a set of authentication parameters used by the client to
-// generate user passwords.
-type PwGenParams struct {
-	PwFunc     string `json:"pw_func"`
-	PwAlg      string `json:"pw_alg"`
-	PwCost     int    `json:"pw_cost"`
-	PwKeySize  int    `json:"pw_key_size"`
-	PwSalt     string `json:"pw_salt"`
-	PwNonce    string `json:"pw_nonce"`
-	Version    string `json:"version"`
-	Identifier string `json:"identifier"` // should be email address
-}
+const (
+	// _MinEmailLength is the shortest allowable length for an email address.
+	// If it was an intranet address, then it'd be x@y, so 3. But nobody has
+	// complained about that so far. Until then, set the shortest email length
+	// to the shortest possible externally-facing email: `a@b.cd`, so 6.
+	_MinEmailLength = 6
+	_MaxEmailLength = 255
+)
 
-// MakePwGenParams constructs authentication parameters from User fields. NOTE:
-// it's tempting to put this into the interactors package, but you can't because
-// you'd get an import cycle.
-func MakePwGenParams(u User) PwGenParams {
-	var params PwGenParams
-
-	if u.Email == "" {
-		return params
+// ValidateEmail returns an error in the email address is invalid.
+func ValidateEmail(email string) error {
+	if len(email) < _MinEmailLength {
+		return fmt.Errorf("email invalid, length must be >= %d", _MinEmailLength)
+	} else if len(email) > _MaxEmailLength {
+		return fmt.Errorf("email invalid, length must be <= %d", _MaxEmailLength)
 	}
 
-	params.Version = "003"
-	params.PwCost = u.PwCost
-	params.Identifier = u.Email
-
-	if u.PwFunc != "" { // v1 only
-		params.PwFunc = u.PwFunc
-		params.PwAlg = u.PwAlg
-		params.PwKeySize = u.PwKeySize
+	match, err := regexp.MatchString(`^.+@.+$`, email)
+	if err != nil {
+		return err
 	}
-	if u.PwSalt == "" { // v2 only
-		nonce := u.PwNonce
-		if nonce == "" {
-			nonce = "a04a8fe6bcb19ba61c5c0873d391e987982fbbd4"
-		}
-		u.PwSalt = encryption.Salt(u.Email, nonce)
+	if !match {
+		return fmt.Errorf("email invalid")
 	}
-	if u.PwNonce != "" { // v3 only
-		params.PwNonce = u.PwNonce
-	}
-
-	params.PwSalt = u.PwSalt
-
-	return params
-}
-
-// NewPassword helps facilitate user password changes.
-type NewPassword struct {
-	User
-	CurrentPassword string `json:"current_password"`
-	NewPassword     string `json:"new_password"`
-}
-
-// Hash computes a sha256 checksum of the input.
-func Hash(input string) string {
-	return strings.Replace(
-		fmt.Sprintf("% x", sha256.Sum256([]byte(input))),
-		" ",
-		"",
-		-1,
-	)
+	return nil
 }

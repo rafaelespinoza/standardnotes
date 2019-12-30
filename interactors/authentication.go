@@ -1,4 +1,4 @@
-package token
+package interactors
 
 import (
 	"errors"

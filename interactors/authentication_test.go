@@ -1,4 +1,4 @@
-package token_test
+package interactors_test
 
 import (
 	"testing"
@@ -6,7 +6,6 @@ import (
 	"github.com/dgrijalva/jwt-go"
 	"github.com/rafaelespinoza/standardfile/db"
 	"github.com/rafaelespinoza/standardfile/interactors"
-	"github.com/rafaelespinoza/standardfile/interactors/token"
 	"github.com/rafaelespinoza/standardfile/models"
 )
 
@@ -20,7 +19,7 @@ func TestAuthenticateUser(t *testing.T) {
 		var err error
 		var knownUser, authenticatedUser *models.User
 		knownUser = models.NewUser()
-		knownUser.Email = "foo@example.com"
+		knownUser.Email = t.Name() + "@example.com"
 		knownUser.Password = "testpassword123"
 		knownUser.PwNonce = "stub_password_nonce"
 		if err = knownUser.Create(); err != nil {
@@ -29,7 +28,7 @@ func TestAuthenticateUser(t *testing.T) {
 		if tok, err = models.EncodeToken(*knownUser); err != nil {
 			t.Fatal(err)
 		}
-		if authenticatedUser, err = token.AuthenticateUser("Bearer " + tok); err != nil {
+		if authenticatedUser, err = interactors.AuthenticateUser("Bearer " + tok); err != nil {
 			t.Errorf("did not expect error; got %v", err)
 		} else if authenticatedUser.UUID != knownUser.UUID {
 			t.Errorf("users not equal\n%#v\n%#v\n", *authenticatedUser, *knownUser)
@@ -38,28 +37,28 @@ func TestAuthenticateUser(t *testing.T) {
 
 	t.Run("errors", func(t *testing.T) {
 		t.Run("invalid header", func(t *testing.T) {
-			if user, err := token.AuthenticateUser(""); err != token.ErrInvalidAuthHeader {
+			if user, err := interactors.AuthenticateUser(""); err != interactors.ErrInvalidAuthHeader {
 				t.Errorf(
 					"expected error: %v; got %v",
-					token.ErrInvalidAuthHeader, err,
+					interactors.ErrInvalidAuthHeader, err,
 				)
 			} else if user != nil {
 				t.Error("user should be nil")
 			}
 
-			if user, err := token.AuthenticateUser("foobar"); err != token.ErrInvalidAuthHeader {
+			if user, err := interactors.AuthenticateUser("foobar"); err != interactors.ErrInvalidAuthHeader {
 				t.Errorf(
 					"expected error: %v; got %v",
-					token.ErrInvalidAuthHeader, err,
+					interactors.ErrInvalidAuthHeader, err,
 				)
 			} else if user != nil {
 				t.Error("user should be nil")
 			}
 
-			if user, err := token.AuthenticateUser("foo bar"); err != token.ErrInvalidAuthHeader {
+			if user, err := interactors.AuthenticateUser("foo bar"); err != interactors.ErrInvalidAuthHeader {
 				t.Errorf(
 					"expected error: %v; got %v",
-					token.ErrInvalidAuthHeader, err,
+					interactors.ErrInvalidAuthHeader, err,
 				)
 			} else if user != nil {
 				t.Error("user should be nil")
@@ -69,7 +68,7 @@ func TestAuthenticateUser(t *testing.T) {
 		t.Run("token validation", func(t *testing.T) {
 			var user *models.User
 			var err error
-			user, err = token.AuthenticateUser("Bearer foobar")
+			user, err = interactors.AuthenticateUser("Bearer foobar")
 
 			switch jerr := err.(type) {
 			case *jwt.ValidationError:
@@ -87,7 +86,7 @@ func TestAuthenticateUser(t *testing.T) {
 			var err error
 			unknownUser := models.User{ // do not save in DB
 				UUID:     "not a real UUID", // need this to attempt db lookup
-				Email:    "foo@example.com",
+				Email:    t.Name() + "@example.com",
 				Password: "testpassword123",
 				PwNonce:  "stub_password_nonce",
 			}
@@ -95,10 +94,10 @@ func TestAuthenticateUser(t *testing.T) {
 			if tok, err = models.EncodeToken(unknownUser); err != nil {
 				t.Fatal(err)
 			}
-			if user, err := token.AuthenticateUser("Bearer " + tok); err != token.ErrUnknownUser {
+			if user, err := interactors.AuthenticateUser("Bearer " + tok); err != interactors.ErrUnknownUser {
 				t.Errorf(
 					"expected error: %v; got %v",
-					token.ErrUnknownUser, err,
+					interactors.ErrUnknownUser, err,
 				)
 			} else if user != nil {
 				t.Error("user should be nil")
@@ -109,7 +108,7 @@ func TestAuthenticateUser(t *testing.T) {
 			var tok string
 			var err error
 			knownUser := models.User{
-				Email:    "foo@example.com",
+				Email:    t.Name() + "@example.com",
 				Password: "testpassword123",
 				PwNonce:  "stub_password_nonce",
 			}
@@ -125,16 +124,16 @@ func TestAuthenticateUser(t *testing.T) {
 				&knownUser,
 				models.NewPassword{
 					User:            knownUser,
-					CurrentPassword: knownUser.Password,
-					NewPassword:     knownUser.Password[1:],
+					CurrentPassword: knownUser.PwHashState(),
+					NewPassword:     models.PwHash{Value: knownUser.Password[1:]},
 				},
 			); err != nil {
 				t.Fatal(err)
 			}
-			if user, err := token.AuthenticateUser("Bearer " + tok); err != token.ErrPasswordInvalid {
+			if user, err := interactors.AuthenticateUser("Bearer " + tok); err != interactors.ErrPasswordInvalid {
 				t.Errorf(
 					"expected error: %v; got %v",
-					token.ErrPasswordInvalid, err,
+					interactors.ErrPasswordInvalid, err,
 				)
 			} else if user != nil {
 				t.Error("user should be nil")

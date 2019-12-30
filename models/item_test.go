@@ -37,8 +37,8 @@ func TestLoadItemByUUID(t *testing.T) {
 	})
 
 	t.Run("errors", func(t *testing.T) {
-		if item, err := models.LoadItemByUUID(""); err != models.ErrEmptyUUID {
-			t.Errorf("expected %v; got %v", models.ErrEmptyUUID, err)
+		if item, err := models.LoadItemByUUID(""); err == nil {
+			t.Error("expected an error")
 		} else if item != nil {
 			t.Errorf("item should be nil")
 		}

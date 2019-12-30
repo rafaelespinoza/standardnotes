@@ -2,6 +2,7 @@ package models_test
 
 import (
 	"database/sql"
+	"regexp"
 	"testing"
 	"time"
 
@@ -13,44 +14,106 @@ func init() {
 	db.Init(":memory:")
 }
 
-func TestLoadUserByUUID(t *testing.T) {
+func TestLoadUser(t *testing.T) {
+	type userLoader func() (*models.User, error)
+
 	t.Run("ok", func(t *testing.T) {
 		saved := models.NewUser()
-		saved.Email = "foo@example.com"
+		saved.Email = t.Name() + "@example.com"
 		saved.Password = "testpassword123"
 		saved.PwNonce = "stub_password_nonce"
 		if err := saved.Create(); err != nil {
 			t.Fatalf("unexpected error; %v", err)
 		}
 
-		loaded, err := models.LoadUserByUUID(saved.UUID)
-		if err != nil {
-			t.Errorf("unexpected error; %v", err)
+		tests := []userLoader{
+			func() (*models.User, error) {
+				return models.LoadUserByUUID(saved.UUID)
+			},
+			func() (*models.User, error) {
+				return models.LoadUserByEmail(saved.Email)
+			},
+			func() (*models.User, error) {
+				return models.LoadUserByEmailAndPassword(saved.Email, saved.Password)
+			},
 		}
-		if !compareUsers(t, loaded, saved, true) {
-			t.Error("users not equal")
+
+		for i, loadUser := range tests {
+			loaded, err := loadUser()
+			if err != nil {
+				t.Errorf("test [%d]; unexpected error; %v", i, err)
+			}
+			if !compareUsers(t, loaded, saved, true) {
+				t.Errorf("test [%d]; users not equal", i)
+			}
+			if !loaded.PwHashState().Hashed {
+				t.Errorf("test [%d]; password should be marked as hashed", i)
+			}
 		}
 	})
 
 	t.Run("errors", func(t *testing.T) {
-		if item, err := models.LoadUserByUUID(""); err != models.ErrEmptyUUID {
-			t.Errorf("expected %v; got %v", models.ErrEmptyUUID, err)
-		} else if item != nil {
-			t.Errorf("item should be nil")
-		}
+		t.Run("empty inputs", func(t *testing.T) {
+			tests := []userLoader{
+				func() (*models.User, error) {
+					return models.LoadUserByUUID("")
+				},
+				func() (*models.User, error) {
+					return models.LoadUserByEmail("")
+				},
+				func() (*models.User, error) {
+					return models.LoadUserByEmailAndPassword("foo@example.com", "")
+				},
+				func() (*models.User, error) {
+					return models.LoadUserByEmailAndPassword("", "testpassword123")
+				},
+				func() (*models.User, error) {
+					return models.LoadUserByEmailAndPassword("", "")
+				},
+			}
+			// The exact error wording is not too important, but it should
+			// mention that something is wrong with the input.
+			errorMessagePattern := regexp.MustCompile(`(?i)empty|invalid|missing|require`)
 
-		if item, err := models.LoadUserByUUID("not-in-the-db"); err != sql.ErrNoRows {
-			t.Errorf("expected %v; got %v", sql.ErrNoRows, err)
-		} else if item != nil {
-			t.Errorf("item should be nil")
-		}
+			for i, loadUser := range tests {
+				user, err := loadUser()
+				if err == nil {
+					t.Errorf("test [%d]; expected error", i)
+				}
+				if !errorMessagePattern.MatchString(err.Error()) {
+					t.Errorf(
+						"test [%d]; expected error message to match %q",
+						i, errorMessagePattern,
+					)
+				}
+				if user != nil {
+					t.Errorf("test [%d]; user should be nil", i)
+				}
+			}
+		})
+
+		t.Run("not found", func(t *testing.T) {
+			tests := []userLoader{
+				func() (*models.User, error) {
+					return models.LoadUserByUUID("not-in-the-db")
+				},
+			}
+
+			for i, loadUser := range tests {
+				if user, err := loadUser(); err != sql.ErrNoRows {
+					t.Errorf("test [%d]; expected %v; got %v", i, sql.ErrNoRows, err)
+				} else if user != nil {
+					t.Errorf("test [%d]; user should be nil; %v", i, user)
+				}
+			}
+		})
 	})
 }
 
 func TestUserExists(t *testing.T) {
 	t.Run("true", func(t *testing.T) {
 		user := models.NewUser()
-		user.Email = "foo@example.com"
+		user.Email = t.Name() + "@example.com"
 		user.Password = "testpassword123"
 		user.PwNonce = "stub_password_nonce"
 		if err := user.Create(); err != nil {
@@ -66,8 +129,20 @@ func TestUserExists(t *testing.T) {
 	})
 
 	t.Run("false", func(t *testing.T) {
+		t.Run("invalid email", func(t *testing.T) {
+			user := models.NewUser()
+			exists, err := user.Exists()
+			if err != nil {
+				t.Errorf("unexpected error; got %v", err)
+			}
+			if exists {
+				t.Error("user should not exist in db")
+			}
+		})
+
 		t.Run("no uuid", func(t *testing.T) {
 			user := models.NewUser()
+			user.Email = t.Name() + "@example.com"
 			exists, err := user.Exists()
 			if err != nil {
 				t.Errorf("unexpected error; got %v", err)
@@ -94,7 +169,7 @@ func TestUserExists(t *testing.T) {
 func TestUserMakeSaferCopy(t *testing.T) {
 	user := &models.User{
 		UUID:      "1234",
-		Email:     "foo@example.com",
+		Email:     t.Name() + "@example.com",
 		Password:  "testpassword123",
 		PwFunc:    "foo",
 		PwAlg:     "bar",
@@ -109,7 +184,7 @@ func TestUserMakeSaferCopy(t *testing.T) {
 	dupe := user.MakeSaferCopy()
 	expected := models.User{
 		UUID:      "1234",
-		Email:     "foo@example.com",
+		Email:     t.Name() + "@example.com",
 		Password:  "",
 		PwFunc:    "foo",
 		PwAlg:     "bar",
@@ -123,13 +198,17 @@ func TestUserMakeSaferCopy(t *testing.T) {
 	if !compareUsers(t, &dupe, &expected, true) {
 		t.Error("users not equal")
 	}
+	if dupe.PwHashState().Hashed {
+		t.Error("password should not be marked as hashed")
+	}
 }
 
 func TestUserCreate(t *testing.T) {
+	const plaintextPassword = "testpassword123"
+
 	t.Run("ok", func(t *testing.T) {
-		const plaintextPassword = "testpassword123"
 		user := models.NewUser()
-		user.Email = "foo@example.com"
+		user.Email = t.Name() + "@example.com"
 		user.Password = plaintextPassword
 		if err := user.Create(); err != nil {
 			t.Error(err)
@@ -147,6 +226,9 @@ func TestUserCreate(t *testing.T) {
 		if user.CreatedAt.IsZero() {
 			t.Error("should set CreatedAt")
 		}
+		if !user.PwHashState().Hashed {
+			t.Errorf("password should be marked as hashed")
+		}
 	})
 
 	t.Run("errors", func(t *testing.T) {
@@ -155,7 +237,7 @@ func TestUserCreate(t *testing.T) {
 			{
 				&models.User{
 					UUID:     "1234",
-					Email:    "foo@example.com",
+					Email:    t.Name() + "uuid" + "@example.com",
 					Password: "testpassword123",
 				},
 			},
@@ -168,7 +250,7 @@ func TestUserCreate(t *testing.T) {
 			// password required
 			{
 				&models.User{
-					Email: "foo@example.com",
+					Email: t.Name() + "pw" + "@example.com",
 				},
 			},
 		}
@@ -178,12 +260,41 @@ func TestUserCreate(t *testing.T) {
 				t.Errorf("test [%d]; expected error", i)
 			}
 		}
+
+		t.Run("already registered", func(t *testing.T) {
+			email := t.Name() + "@example.com"
+			existingUser := models.NewUser()
+			existingUser.Email = email
+			existingUser.Password = plaintextPassword
+			if err := existingUser.Create(); err != nil {
+				t.Fatal(err)
+				return
+			}
+
+			user := models.NewUser()
+			user.Email = email
+			user.Password = plaintextPassword
+			if err := user.Create(); err == nil {
+				t.Error("expected error")
+			}
+			if user.UUID == "" {
+				return
+			}
+
+			// further troubleshooting...
+			t.Error("user UUID should be empty")
+			if wtf, err := models.LoadUserByUUID(user.UUID); err != sql.ErrNoRows {
+				t.Errorf("unexpected error; %v", err)
+			} else {
+				t.Errorf("did not expect to find user in db; got %v", wtf)
+			}
+		})
 	})
 }
 
 func TestUserLoadActiveItems(t *testing.T) {
 	user := models.NewUser()
-	user.Email = "foo@example.com"
+	user.Email = t.Name() + "@example.com"
 	user.Password = "testpassword123"
 	user.PwNonce = "stub_password_nonce"
 	var err error
@@ -222,7 +333,7 @@ func compareUsers(t *testing.T, a, b *models.User, checkTimestamps bool) (ok boo
 		t.Errorf("a not nil, but b is nil")
 		ok = false
 	} else if a == nil && b == nil {
-		t.Logf("both items are nil, probably not what you want?")
+		t.Logf("both users are nil, probably not what you want?")
 		ok = false
 	}
 	if !ok {
