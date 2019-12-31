@@ -59,22 +59,22 @@ func authenticateUser(r *http.Request) (*models.User, error) {
 
 // authHandlers groups http handlers for "/auth/" routes.
 var authHandlers = struct {
-	ChangePassword http.HandlerFunc
-	UpdateUser     http.HandlerFunc
-	RegisterUser   http.HandlerFunc
-	LoginUser      http.HandlerFunc
-	GetParams      http.HandlerFunc
+	changePassword http.HandlerFunc
+	updateUser     http.HandlerFunc
+	registerUser   http.HandlerFunc
+	loginUser      http.HandlerFunc
+	getParams      http.HandlerFunc
 }{
-	ChangePassword: ChangePassword,
-	UpdateUser:     UpdateUser,
-	RegisterUser:   RegisterUser,
-	LoginUser:      LoginUser,
-	GetParams:      GetParams,
+	changePassword: changePassword,
+	updateUser:     updateUser,
+	registerUser:   registerUser,
+	loginUser:      loginUser,
+	getParams:      getParams,
 }
 
-// ChangePassword is the change password handler.
+// changePassword is the change password handler.
 // POST /auth/change_pw
-func ChangePassword(w http.ResponseWriter, r *http.Request) {
+func changePassword(w http.ResponseWriter, r *http.Request) {
 	user, err := authenticateUser(r)
 	if err != nil {
 		mustShowError(w, err, http.StatusUnauthorized)
@@ -108,9 +108,9 @@ func ChangePassword(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
-// UpdateUser updates user info.
+// updateUser updates user info.
 // POST /auth/update
-func UpdateUser(w http.ResponseWriter, r *http.Request) {
+func updateUser(w http.ResponseWriter, r *http.Request) {
 	user, err := authenticateUser(r)
 	if err != nil {
 		mustShowError(w, err, http.StatusUnauthorized)
@@ -130,9 +130,9 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusAccepted, nil)
 }
 
-// RegisterUser is the registration handler.
+// registerUser is the registration handler.
 // POST /auth/register
-func RegisterUser(w http.ResponseWriter, r *http.Request) {
+func registerUser(w http.ResponseWriter, r *http.Request) {
 	var params interactors.RegisterUserParams
 
 	if err := readJSONRequest(r, &params); err != nil {
@@ -152,9 +152,9 @@ func RegisterUser(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
-// LoginUser handles sign in.
+// loginUser handles sign in.
 // POST /auth/sign_in
-func LoginUser(w http.ResponseWriter, r *http.Request) {
+func loginUser(w http.ResponseWriter, r *http.Request) {
 	var params struct {
 		API      string `json:"api"`
 		Email    string `json:"email"`
@@ -180,9 +180,9 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
-// GetParams is the get auth parameters handler.
+// getParams is the get auth parameters handler.
 // GET /auth/params
-func GetParams(w http.ResponseWriter, r *http.Request) {
+func getParams(w http.ResponseWriter, r *http.Request) {
 	email := r.FormValue("email")
 	logger.LogIfDebug("Request:", string(email))
 	var params models.PwGenParams
@@ -205,16 +205,16 @@ func GetParams(w http.ResponseWriter, r *http.Request) {
 
 // itemsHandlers groups http handlers for "/items/" routes.
 var itemsHandlers = struct {
-	SyncItems   http.HandlerFunc
-	BackupItems http.HandlerFunc
+	syncItems   http.HandlerFunc
+	backupItems http.HandlerFunc
 }{
-	SyncItems:   SyncItems,
-	BackupItems: BackupItems,
+	syncItems:   syncItems,
+	backupItems: backupItems,
 }
 
-// SyncItems is the items sync handler.
+// syncItems is the items sync handler.
 // POST /items/sync
-func SyncItems(w http.ResponseWriter, r *http.Request) {
+func syncItems(w http.ResponseWriter, r *http.Request) {
 	user, err := authenticateUser(r)
 	if err != nil {
 		mustShowError(w, err, http.StatusUnauthorized)
@@ -236,9 +236,9 @@ func SyncItems(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusAccepted, response)
 }
 
-// BackupItems export items.
+// backupItems export items.
 // POST /items/backup
-func BackupItems(w http.ResponseWriter, r *http.Request) {
+func backupItems(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
 		mustShowError(w, err, http.StatusInternalServerError)

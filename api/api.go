@@ -86,16 +86,16 @@ func makeRouter(conf config.Config) http.Handler {
 		w.Write([]byte("version " + config.Metadata.Version))
 	}, conf.UseCORS, http.MethodGet)
 
-	addRoute(r, "/items/sync", itemsHandlers.SyncItems, conf.UseCORS, http.MethodPost)
-	addRoute(r, "/items/backup", itemsHandlers.BackupItems, conf.UseCORS, http.MethodPost)
+	addRoute(r, "/items/sync", itemsHandlers.syncItems, conf.UseCORS, http.MethodPost)
+	addRoute(r, "/items/backup", itemsHandlers.backupItems, conf.UseCORS, http.MethodPost)
 
-	addRoute(r, "/auth/params", authHandlers.GetParams, conf.UseCORS, http.MethodGet)
-	addRoute(r, "/auth/update", authHandlers.UpdateUser, conf.UseCORS, http.MethodPost)
-	addRoute(r, "/auth/change_pw", authHandlers.ChangePassword, conf.UseCORS, http.MethodPost)
-	addRoute(r, "/auth/sign_in", authHandlers.LoginUser, conf.UseCORS, http.MethodPost)
-	addRoute(r, "/auth/sign_in.json", authHandlers.LoginUser, conf.UseCORS, http.MethodPost)
+	addRoute(r, "/auth/params", authHandlers.getParams, conf.UseCORS, http.MethodGet)
+	addRoute(r, "/auth/update", authHandlers.updateUser, conf.UseCORS, http.MethodPost)
+	addRoute(r, "/auth/change_pw", authHandlers.changePassword, conf.UseCORS, http.MethodPost)
+	addRoute(r, "/auth/sign_in", authHandlers.loginUser, conf.UseCORS, http.MethodPost)
+	addRoute(r, "/auth/sign_in.json", authHandlers.loginUser, conf.UseCORS, http.MethodPost)
 	if !conf.NoReg {
-		addRoute(r, "/auth", authHandlers.RegisterUser, conf.UseCORS, http.MethodPost)
+		addRoute(r, "/auth", authHandlers.registerUser, conf.UseCORS, http.MethodPost)
 	}
 
 	// middleware
