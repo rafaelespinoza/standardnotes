@@ -13,6 +13,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/rafaelespinoza/standardfile/config"
 	"github.com/rafaelespinoza/standardfile/logger"
+	"github.com/rs/cors"
 )
 
 var _Server *server
@@ -29,21 +30,21 @@ func newServer(conf config.Config) (serv *server, err error) {
 	r := mux.NewRouter()
 
 	// routes
-	addRoute(r, "/", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("version " + config.Metadata.Version))
-	}, conf.UseCORS, http.MethodGet)
+	}).Methods(http.MethodGet)
 
-	addRoute(r, "/items/sync", itemsHandlers.syncItems, conf.UseCORS, http.MethodPost)
-	addRoute(r, "/items/backup", itemsHandlers.backupItems, conf.UseCORS, http.MethodPost)
+	r.HandleFunc("/items/sync", itemsHandlers.syncItems).Methods(http.MethodPost)
+	r.HandleFunc("/items/backup", itemsHandlers.backupItems).Methods(http.MethodPost)
 
-	addRoute(r, "/auth/params", authHandlers.getParams, conf.UseCORS, http.MethodGet)
-	addRoute(r, "/auth/update", authHandlers.updateUser, conf.UseCORS, http.MethodPost)
-	addRoute(r, "/auth/change_pw", authHandlers.changePassword, conf.UseCORS, http.MethodPost)
-	addRoute(r, "/auth/sign_in", authHandlers.loginUser, conf.UseCORS, http.MethodPost)
-	addRoute(r, "/auth/sign_in.json", authHandlers.loginUser, conf.UseCORS, http.MethodPost)
+	r.HandleFunc("/auth/params", authHandlers.getParams).Methods(http.MethodGet)
+	r.HandleFunc("/auth/update", authHandlers.updateUser).Methods(http.MethodPost)
+	r.HandleFunc("/auth/change_pw", authHandlers.changePassword).Methods(http.MethodPost)
+	r.HandleFunc("/auth/sign_in", authHandlers.loginUser).Methods(http.MethodPost)
+	r.HandleFunc("/auth/sign_in.json", authHandlers.loginUser).Methods(http.MethodPost)
 	if !conf.NoReg {
-		addRoute(r, "/auth", authHandlers.registerUser, conf.UseCORS, http.MethodPost)
+		r.HandleFunc("/auth", authHandlers.registerUser).Methods(http.MethodPost)
 	}
 
 	// middleware
@@ -65,15 +66,25 @@ func newServer(conf config.Config) (serv *server, err error) {
 			},
 		)
 	})
-	if conf.UseCORS {
-		r.Use(mux.CORSMethodMiddleware(r))
+
+	var handler http.Handler
+	if !conf.UseCORS {
+		handler = r
+	} else {
+		handler = cors.New(
+			cors.Options{
+				AllowedHeaders: []string{"*"},
+				ExposedHeaders: []string{"Access-Token", "Client", "UID"},
+				MaxAge:         86400,
+			},
+		).Handler(r)
 	}
 
 	return &server{
 		conf: conf,
 		http: http.Server{
 			Addr:    conf.Host + ":" + strconv.Itoa(conf.Port),
-			Handler: r,
+			Handler: handler,
 		},
 	}, nil
 }
@@ -83,9 +94,6 @@ func (s *server) listen() error {
 
 	if s.conf.Socket == "" {
 		port := strconv.Itoa(s.conf.Port)
-		if s.conf.UseCORS {
-			handler = handlers.CORS()(handler)
-		}
 		log.Println("Listening on port " + port)
 		return http.ListenAndServe(":"+port, handler)
 	}
@@ -101,19 +109,3 @@ func (s *server) listen() error {
 }
 
 func (s *server) shutdown() { close(s.work) }
-
-// addRoute sets up one route on router. If cors is true, then it adds an
-// additional CORS handler and adds the OPTIONS method to the route.
-func addRoute(router *mux.Router, path string, handler http.HandlerFunc, cors bool, mtds ...string) {
-	router.HandleFunc(path, handler).Methods(mtds...)
-	if cors {
-		router.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Headers", "*")
-			w.Header().Set("Access-Control-Max-Age", "1728000")
-			for _, key := range []string{"Access-Token", "Client", "UID"} {
-				w.Header().Add("Access-Control-Expose-Headers", key)
-			}
-		}).Methods(http.MethodOptions)
-	}
-}
