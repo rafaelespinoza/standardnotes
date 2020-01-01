@@ -11,12 +11,12 @@ import (
 const _MinConflictThreshold = 1 * time.Second
 
 var (
-	// ErrConflictingSync signals some kind of item conflict; usually when two
+	// errSyncConflict signals some kind of item conflict; usually when two
 	// items have the same UUID but different updated at timestamps.
-	ErrConflictingSync = errors.New("sync_conflict")
-	// ErrConflictingUUID signals a UUID conflict, this might happen if a user
+	errSyncConflict = errors.New("sync_conflict")
+	// errUUIDConflict signals a UUID conflict, this might happen if a user
 	// is importing data from another account.
-	ErrConflictingUUID = errors.New("uuid_conflict")
+	errUUIDConflict = errors.New("uuid_conflict")
 )
 
 // ItemConflict describes an item sync conflict. It's comprised of the Item and
@@ -35,7 +35,7 @@ type uuidConflict struct {
 var _ ItemConflict = (*uuidConflict)(nil)
 
 func (c *uuidConflict) Item() models.Item { return c.item }
-func (c *uuidConflict) Conflict() error   { return ErrConflictingUUID }
+func (c *uuidConflict) Conflict() error   { return errUUIDConflict }
 func (c *uuidConflict) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]interface{}{
 		"unsaved_item": c.Item(),
@@ -50,7 +50,7 @@ type syncConflict struct {
 var _ ItemConflict = (*syncConflict)(nil)
 
 func (c *syncConflict) Item() models.Item { return c.item }
-func (c *syncConflict) Conflict() error   { return ErrConflictingSync }
+func (c *syncConflict) Conflict() error   { return errSyncConflict }
 func (c *syncConflict) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]interface{}{
 		"server_item": c.Item(),

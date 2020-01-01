@@ -60,6 +60,10 @@ func (i *Item) Save() error {
 
 // Create adds the Item to the DB.
 func (i *Item) Create() error {
+	if len(i.UserUUID) < MinIDLength {
+		return validationError{fmt.Errorf("user_uuid too short")}
+	}
+
 	if i.UUID == "" {
 		id := uuid.New()
 		i.UUID = uuid.Must(id, nil).String()
@@ -110,8 +114,7 @@ func (i *Item) Delete() error {
 
 // Copy duplicates the Item, generates a new UUID and saves it to the DB.
 func (i Item) Copy() (Item, error) {
-	out := uuid.New()
-	i.UUID = uuid.Must(out, nil).String()
+	i.UUID = "" // the Create method should make another one.
 	i.UpdatedAt = time.Now()
 	err := i.Create()
 	if err != nil {

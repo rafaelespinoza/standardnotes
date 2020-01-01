@@ -7,6 +7,8 @@ import (
 	"reflect"
 
 	"github.com/kisielk/sqlstruct"
+	"github.com/rafaelespinoza/standardfile/errs"
+
 	// initialize driver
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -128,7 +130,7 @@ func SelectExists(query string, args ...interface{}) (exists bool, err error) {
 
 // SelectStruct attempts to select one matching row and fill the result into
 // dest. The dest argument should be a pointer to some intended value. If there
-// are no rows, then it returns a sql.ErrNoRows error.
+// are no rows, then it returns an ErrNoRows error.
 func SelectStruct(query string, dest interface{}, args ...interface{}) (err error) {
 	var stmt *sql.Stmt
 	var rows *sql.Rows
@@ -160,7 +162,7 @@ func SelectStruct(query string, dest interface{}, args ...interface{}) (err erro
 	if err = rows.Err(); err != nil {
 		return
 	} else if numRows < 1 {
-		err = sql.ErrNoRows
+		err = errNoRows{sql.ErrNoRows}
 		return
 	}
 	return
@@ -208,3 +210,11 @@ func indirect(reflectValue reflect.Value) reflect.Value {
 	}
 	return reflectValue
 }
+
+type errNoRows struct {
+	error
+}
+
+func (e errNoRows) NotFound() bool { return true }
+
+var _ errs.NotFound = (*errNoRows)(nil)

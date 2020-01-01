@@ -4,51 +4,39 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"regexp"
 	"strings"
 
+	"github.com/rafaelespinoza/standardfile/errs"
 	"github.com/rafaelespinoza/standardfile/jobs"
 	"github.com/rafaelespinoza/standardfile/models"
 )
 
 var (
-	ErrInvalidEmail         = errors.New("email invalid.")
-	ErrMissingNewAuthParams = errors.New(
+	errMissingNewAuthParams = errors.New(
 		"the change password request is missing new auth parameters, please try again",
 	)
-	ErrNoPasswordProvidedDuringChange = errors.New(strings.TrimSpace(`
+	errNoPasswordProvidedDuringChange = errors.New(strings.TrimSpace(`
 		your current password is required to change your password,
 		please update your application if you do not see this option.`,
 	))
-	ErrPasswordIncorrect = errors.New(
+	errPasswordIncorrect = errors.New(
 		"the current password you entered is incorrect, please try again",
 	)
+	// errInvalidEmailOrPassword is a fallback error.
+	errInvalidEmailOrPassword = errors.New("invalid email or password")
 )
 
 func MakeAuthParams(email string) (params models.PwGenParams, err error) {
-	if err = validateEmail(email); err != nil {
+	if err = models.ValidateEmail(email); err != nil {
 		return
 	}
 	var user *models.User
 	if user, err = models.LoadUserByEmail(email); err != nil {
+		err = maybeMutateError(err)
 		return
 	}
 	params = models.MakePwGenParams(*user)
 	return
-}
-
-func validateEmail(email string) error {
-	if len(email) < 1 || len(email) > 255 {
-		return ErrInvalidEmail
-	}
-	match, err := regexp.MatchString(".+@.+", email)
-	if err != nil {
-		return err
-	}
-	if !match {
-		return ErrInvalidEmail
-	}
-	return nil
 }
 
 type RegisterUserParams struct {
@@ -99,13 +87,16 @@ func RegisterUser(params RegisterUserParams) (user *models.User, token string, e
 func LoginUser(email string, password *models.PwHash) (user *models.User, token string, err error) {
 	password.Hash()
 	if user, err = models.LoadUserByEmailAndPassword(email, password.Value); err != nil {
-		err = fmt.Errorf("user not found or password wrong")
+		err = maybeMutateError(err)
 		return
 	}
 
 	if user.UUID == "" {
 		user = nil
-		err = fmt.Errorf("invalid email or password")
+		err = authenticationError{
+			error:      errInvalidEmailOrPassword,
+			validation: true,
+		}
 		return
 	}
 
@@ -131,10 +122,10 @@ func handleSuccessfulAuthAttempt(u models.User) error {
 
 func ChangeUserPassword(user *models.User, password models.NewPassword) (token string, err error) {
 	if len(password.CurrentPassword.Value) == 0 {
-		err = ErrNoPasswordProvidedDuringChange
+		err = authenticationError{error: errNoPasswordProvidedDuringChange, validation: true}
 		return
 	} else if len(password.PwNonce) == 0 {
-		err = ErrMissingNewAuthParams
+		err = authenticationError{error: errMissingNewAuthParams, validation: true}
 		return
 	}
 
@@ -142,7 +133,7 @@ func ChangeUserPassword(user *models.User, password models.NewPassword) (token s
 		if ierr := handleFailedAuthAttempt(*user); ierr != nil {
 			err = ierr
 		}
-		err = ErrPasswordIncorrect
+		err = authenticationError{error: errPasswordIncorrect, validation: true}
 		return
 	}
 	if err = handleSuccessfulAuthAttempt(*user); err != nil {
@@ -165,8 +156,27 @@ func ChangeUserPassword(user *models.User, password models.NewPassword) (token s
 		Hashed: true,
 	}
 	if user, token, err = LoginUser(user.Email, &newPassword); err != nil {
-		err = ErrPasswordIncorrect
+		err = authenticationError{error: errPasswordIncorrect, validation: true}
 		return
+	}
+	return
+}
+
+var (
+	_ errs.NotFound   = (*authenticationError)(nil)
+	_ errs.Validation = (*authenticationError)(nil)
+)
+
+func maybeMutateError(in error) (out error) {
+	if errs.NotFoundError(in) {
+		out = authenticationError{
+			error:    errInvalidEmailOrPassword,
+			notFound: true,
+		}
+	} else if errs.ValidationError(in) {
+		out = authenticationError{error: in, validation: true}
+	} else {
+		out = in
 	}
 	return
 }

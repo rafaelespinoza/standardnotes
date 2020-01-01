@@ -6,11 +6,16 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/rafaelespinoza/standardfile/errs"
 	"github.com/rafaelespinoza/standardfile/interactors"
 	"github.com/rafaelespinoza/standardfile/interactors/itemsync"
 	"github.com/rafaelespinoza/standardfile/logger"
 	"github.com/rafaelespinoza/standardfile/models"
 )
+
+func sanitizeAuthError(e error) bool {
+	return errs.ValidationError(e) || errs.NotFoundError(e)
+}
 
 func makeError(err error, code int) map[string]interface{} {
 	var serr = err
@@ -27,7 +32,7 @@ func makeError(err error, code int) map[string]interface{} {
 }
 
 func mustShowError(w http.ResponseWriter, err error, code int) {
-	logger.LogIfDebug(err)
+	logger.LogIfDebug(fmt.Sprintf("%d %#v", code, err))
 	body, merr := json.Marshal(makeError(err, code))
 	if merr != nil {
 		panic(merr)
@@ -85,18 +90,11 @@ func changePassword(w http.ResponseWriter, r *http.Request) {
 		mustShowError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
-
 	token, err := interactors.ChangeUserPassword(user, password)
-	switch err {
-	case nil:
-		break
-	case
-		interactors.ErrNoPasswordProvidedDuringChange,
-		interactors.ErrMissingNewAuthParams,
-		interactors.ErrPasswordIncorrect:
+	if errs.ValidationError(err) {
 		mustShowError(w, err, http.StatusUnauthorized)
 		return
-	default:
+	} else if err != nil {
 		mustShowError(w, err, http.StatusInternalServerError)
 		return
 	}
@@ -187,7 +185,7 @@ func getParams(w http.ResponseWriter, r *http.Request) {
 	logger.LogIfDebug("Request:", string(email))
 	var params models.PwGenParams
 	var err error
-	if params, err = interactors.MakeAuthParams(email); err == interactors.ErrInvalidEmail {
+	if params, err = interactors.MakeAuthParams(email); sanitizeAuthError(err) {
 		mustShowError(w, err, http.StatusUnauthorized)
 		return
 	} else if err != nil {

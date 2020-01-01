@@ -2,11 +2,11 @@ package models_test
 
 import (
 	"database/sql"
-	"regexp"
 	"testing"
 	"time"
 
 	"github.com/rafaelespinoza/standardfile/db"
+	"github.com/rafaelespinoza/standardfile/errs"
 	"github.com/rafaelespinoza/standardfile/models"
 )
 
@@ -71,20 +71,15 @@ func TestLoadUser(t *testing.T) {
 					return models.LoadUserByEmailAndPassword("", "")
 				},
 			}
-			// The exact error wording is not too important, but it should
-			// mention that something is wrong with the input.
-			errorMessagePattern := regexp.MustCompile(`(?i)empty|invalid|missing|require`)
 
 			for i, loadUser := range tests {
 				user, err := loadUser()
 				if err == nil {
 					t.Errorf("test [%d]; expected error", i)
 				}
-				if !errorMessagePattern.MatchString(err.Error()) {
-					t.Errorf(
-						"test [%d]; expected error message to match %q",
-						i, errorMessagePattern,
-					)
+				ok := errs.ValidationError(err)
+				if !ok {
+					t.Errorf("test [%d]; unexpected error type; %#v", i, err)
 				}
 				if user != nil {
 					t.Errorf("test [%d]; user should be nil", i)
@@ -100,8 +95,8 @@ func TestLoadUser(t *testing.T) {
 			}
 
 			for i, loadUser := range tests {
-				if user, err := loadUser(); err != sql.ErrNoRows {
-					t.Errorf("test [%d]; expected %v; got %v", i, sql.ErrNoRows, err)
+				if user, err := loadUser(); !errs.NotFoundError(err) {
+					t.Errorf("test [%d]; unexpected error type; %#v", i, err)
 				} else if user != nil {
 					t.Errorf("test [%d]; user should be nil; %v", i, user)
 				}
@@ -236,7 +231,7 @@ func TestUserCreate(t *testing.T) {
 			// UUID must be empty
 			{
 				&models.User{
-					UUID:     "1234",
+					UUID:     stubbedUUID,
 					Email:    t.Name() + "uuid" + "@example.com",
 					Password: "testpassword123",
 				},
@@ -302,8 +297,8 @@ func TestUserLoadActiveItems(t *testing.T) {
 		t.Fatal(err)
 	}
 	initialItems := []models.Item{
-		{UUID: "alfa", UserUUID: user.UUID, Content: "a", ContentType: "a", EncItemKey: "a", AuthHash: "a"},
-		{UUID: "bravo", UserUUID: user.UUID, Content: "b", ContentType: "b", EncItemKey: "b", AuthHash: "b"},
+		{UserUUID: user.UUID, Content: "a", ContentType: "a", EncItemKey: "a", AuthHash: "a"},
+		{UserUUID: user.UUID, Content: "b", ContentType: "b", EncItemKey: "b", AuthHash: "b"},
 	}
 	for i, item := range initialItems {
 		if err := item.Save(); err != nil {

@@ -2,7 +2,6 @@ package models
 
 import (
 	"fmt"
-	"regexp"
 	"time"
 
 	"github.com/google/uuid"
@@ -49,7 +48,7 @@ func (u *User) GetUUID() string    { return u.UUID }
 // LoadUserByUUID fetches a User from the DB.
 func LoadUserByUUID(uuid string) (user *User, err error) {
 	if uuid == "" {
-		err = fmt.Errorf("uuid is empty")
+		err = validationError{fmt.Errorf("uuid is empty")}
 		return
 	}
 	user = NewUser() // can't be nil to start out
@@ -75,8 +74,9 @@ func LoadUserByEmail(email string) (user *User, err error) {
 // LoadUserByEmailAndPassword populates user fields by looking up the user email
 // and hashed password.
 func LoadUserByEmailAndPassword(email, password string) (user *User, err error) {
-	if email == "" || password == "" {
-		err = fmt.Errorf("email or password is empty")
+	if err = ValidateEmail(email); err != nil {
+		return
+	} else if err = ValidatePassword(password); err != nil {
 		return
 	}
 	user = NewUser()
@@ -103,19 +103,23 @@ func (u *User) fetchHydrate(query string, args ...interface{}) (err error) {
 }
 
 // Create saves the user to the DB.
-func (u *User) Create() error {
+func (u *User) Create() (err error) {
 	if u.UUID != "" {
-		return fmt.Errorf("cannot recreate existing user")
+		err = validationError{fmt.Errorf("cannot recreate existing user")}
+		return
+	} else if err = ValidateEmail(u.Email); err != nil {
+		return
+	} else if u.Password == "" {
+		err = validationError{fmt.Errorf("password cannot be empty")}
+		return
 	}
 
-	if u.Email == "" || u.Password == "" {
-		return fmt.Errorf("empty email or password")
-	}
-
-	if exists, err := u.Exists(); err != nil {
-		return err
+	if exists, xerr := u.Exists(); xerr != nil {
+		err = xerr
+		return
 	} else if exists {
-		return fmt.Errorf("email is already registered")
+		err = validationError{fmt.Errorf("email is already registered")}
+		return
 	}
 
 	id := uuid.New()
@@ -123,16 +127,18 @@ func (u *User) Create() error {
 	u.Password = Hash(u.Password)
 	u.CreatedAt = time.Now()
 
-	err := db.Query(`
+	err = db.Query(`
 		INSERT INTO users (
 			uuid, email, password, pw_func, pw_alg, pw_cost, pw_key_size,
 			pw_nonce, pw_salt, created_at, updated_at
 		) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
 		u.UUID, u.Email, u.Password, u.PwFunc, u.PwAlg, u.PwCost, u.PwKeySize,
-		u.PwNonce, u.PwSalt, u.CreatedAt, u.UpdatedAt)
+		u.PwNonce, u.PwSalt, u.CreatedAt, u.UpdatedAt,
+	)
 
 	if err != nil {
 		logger.LogIfDebug(err)
+		return
 	}
 	u.passwordHashed = true
 	return err
@@ -277,31 +283,4 @@ func (u *User) LoadAllItems(contentType string, limit int) (items Items, err err
 		&items, u.UUID, false,
 	)
 	return
-}
-
-const (
-	// _MinEmailLength is the shortest allowable length for an email address.
-	// If it was an intranet address, then it'd be x@y, so 3. But nobody has
-	// complained about that so far. Until then, set the shortest email length
-	// to the shortest possible externally-facing email: `a@b.cd`, so 6.
-	_MinEmailLength = 6
-	_MaxEmailLength = 255
-)
-
-// ValidateEmail returns an error in the email address is invalid.
-func ValidateEmail(email string) error {
-	if len(email) < _MinEmailLength {
-		return fmt.Errorf("email invalid, length must be >= %d", _MinEmailLength)
-	} else if len(email) > _MaxEmailLength {
-		return fmt.Errorf("email invalid, length must be <= %d", _MaxEmailLength)
-	}
-
-	match, err := regexp.MatchString(`^.+@.+$`, email)
-	if err != nil {
-		return err
-	}
-	if !match {
-		return fmt.Errorf("email invalid")
-	}
-	return nil
 }

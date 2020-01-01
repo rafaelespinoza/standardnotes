@@ -16,7 +16,7 @@ func TestItemConflict(t *testing.T) {
 		expectedType string
 	}
 	tests := map[error]TestCase{
-		ErrConflictingUUID: {
+		errUUIDConflict: {
 			inputItem: models.Item{
 				UUID:      "foo",
 				CreatedAt: time.Now().Add(-time.Hour),
@@ -25,7 +25,7 @@ func TestItemConflict(t *testing.T) {
 			expectedKeys: []string{"type", "unsaved_item"},
 			expectedType: "uuid_conflict",
 		},
-		ErrConflictingSync: {
+		errSyncConflict: {
 			inputItem: models.Item{
 				UUID:      "foo",
 				CreatedAt: time.Now().Add(-time.Hour),
@@ -87,13 +87,13 @@ func TestItemConflict(t *testing.T) {
 	}
 
 	t.Run("uuid_conflict", func(t *testing.T) {
-		test := tests[ErrConflictingUUID]
+		test := tests[errUUIDConflict]
 		if ok := testItemConflict(t, &uuidConflict{item: test.inputItem}, test); !ok {
 			t.Error("item conflict incorrect")
 		}
 	})
 	t.Run("sync_conflict", func(t *testing.T) {
-		test := tests[ErrConflictingSync]
+		test := tests[errSyncConflict]
 		if ok := testItemConflict(t, &syncConflict{item: test.inputItem}, test); !ok {
 			t.Error("item conflict incorrect")
 		}

@@ -3,7 +3,6 @@ package interactors_test
 import (
 	"testing"
 
-	"github.com/dgrijalva/jwt-go"
 	"github.com/rafaelespinoza/standardfile/db"
 	"github.com/rafaelespinoza/standardfile/interactors"
 	"github.com/rafaelespinoza/standardfile/models"
@@ -37,45 +36,34 @@ func TestAuthenticateUser(t *testing.T) {
 
 	t.Run("errors", func(t *testing.T) {
 		t.Run("invalid header", func(t *testing.T) {
-			if user, err := interactors.AuthenticateUser(""); err != interactors.ErrInvalidAuthHeader {
-				t.Errorf(
-					"expected error: %v; got %v",
-					interactors.ErrInvalidAuthHeader, err,
-				)
-			} else if user != nil {
+			var user *models.User
+			var err error
+			expError := errExpectations{messageFragment: "header", notFound: false, validation: true}
+
+			user, err = interactors.AuthenticateUser("")
+			testError(t, err, expError)
+			if user != nil {
 				t.Error("user should be nil")
 			}
 
-			if user, err := interactors.AuthenticateUser("foobar"); err != interactors.ErrInvalidAuthHeader {
-				t.Errorf(
-					"expected error: %v; got %v",
-					interactors.ErrInvalidAuthHeader, err,
-				)
-			} else if user != nil {
+			user, err = interactors.AuthenticateUser("foobar")
+			testError(t, err, expError)
+			if user != nil {
 				t.Error("user should be nil")
 			}
 
-			if user, err := interactors.AuthenticateUser("foo bar"); err != interactors.ErrInvalidAuthHeader {
-				t.Errorf(
-					"expected error: %v; got %v",
-					interactors.ErrInvalidAuthHeader, err,
-				)
-			} else if user != nil {
+			user, err = interactors.AuthenticateUser("foo bar")
+			testError(t, err, expError)
+			if user != nil {
 				t.Error("user should be nil")
 			}
 		})
 
 		t.Run("token validation", func(t *testing.T) {
-			var user *models.User
-			var err error
-			user, err = interactors.AuthenticateUser("Bearer foobar")
+			expError := errExpectations{messageFragment: "token", notFound: false, validation: true}
+			user, err := interactors.AuthenticateUser("Bearer foobar")
 
-			switch jerr := err.(type) {
-			case *jwt.ValidationError:
-				break // ok
-			default:
-				t.Errorf("expected %T, got %v", &jwt.ValidationError{}, jerr)
-			}
+			testError(t, err, expError)
 			if user != nil {
 				t.Error("user should be nil")
 			}
@@ -94,12 +82,10 @@ func TestAuthenticateUser(t *testing.T) {
 			if tok, err = models.EncodeToken(unknownUser); err != nil {
 				t.Fatal(err)
 			}
-			if user, err := interactors.AuthenticateUser("Bearer " + tok); err != interactors.ErrUnknownUser {
-				t.Errorf(
-					"expected error: %v; got %v",
-					interactors.ErrUnknownUser, err,
-				)
-			} else if user != nil {
+
+			user, err := interactors.AuthenticateUser("Bearer " + tok)
+			testError(t, err, errExpectations{"email", true, false})
+			if user != nil {
 				t.Error("user should be nil")
 			}
 		})
@@ -119,6 +105,7 @@ func TestAuthenticateUser(t *testing.T) {
 			if tok, err = models.EncodeToken(knownUser); err != nil {
 				t.Fatal(err)
 			}
+
 			// make a legit token stale by updating password
 			if _, err = interactors.ChangeUserPassword(
 				&knownUser,
@@ -130,12 +117,14 @@ func TestAuthenticateUser(t *testing.T) {
 			); err != nil {
 				t.Fatal(err)
 			}
-			if user, err := interactors.AuthenticateUser("Bearer " + tok); err != interactors.ErrPasswordInvalid {
-				t.Errorf(
-					"expected error: %v; got %v",
-					interactors.ErrPasswordInvalid, err,
-				)
-			} else if user != nil {
+			expError := errExpectations{
+				messageFragment: "password",
+				notFound:        false,
+				validation:      true,
+			}
+			user, err := interactors.AuthenticateUser("Bearer " + tok)
+			testError(t, err, expError)
+			if user != nil {
 				t.Error("user should be nil")
 			}
 		})

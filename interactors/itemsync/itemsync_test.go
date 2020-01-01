@@ -23,7 +23,7 @@ func TestMain(m *testing.M) {
 func TestSyncUserItems(t *testing.T) {
 	db.Init(":memory:")
 
-	user := models.User{UUID: t.Name()}
+	user := models.User{UUID: t.Name() + time.Now().Format(time.RFC3339Nano)}
 
 	existingItems := []models.Item{
 		makeItem(t.Name()+"/alpha", user.UUID),
@@ -41,8 +41,8 @@ func TestSyncUserItems(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	if res.CursorToken == "" {
-		t.Error("expected CursorToken not to be empty")
+	if res.CursorToken != "" {
+		t.Error("expected CursorToken to be empty")
 	}
 	if res.SyncToken == "" {
 		t.Error("expected SyncToken not to be empty")
@@ -61,13 +61,12 @@ func TestDoItemSync(t *testing.T) {
 	pathToTestDir := baseTestOutputDir + "/" + t.Name()
 	if err := os.MkdirAll(pathToTestDir, 0755); err != nil {
 		t.Fatalf("error creating test directory %s", pathToTestDir)
-		return
 	}
 	defer os.RemoveAll(pathToTestDir)
 	// debugging is easier when the DB is not in-memory.
 	db.Init(pathToTestDir + "/" + testDBName)
 
-	user := models.User{UUID: t.Name()}
+	user := models.User{UUID: t.Name() + time.Now().Format(time.RFC3339Nano)}
 	unchangedItem := makeItem(t.Name()+"/unchanged", user.UUID)
 	itemToChange := makeItem(t.Name()+"/change", user.UUID)
 	itemWithSyncConflict := makeItem(t.Name()+"/sync_conflict", user.UUID)
@@ -81,7 +80,6 @@ func TestDoItemSync(t *testing.T) {
 	for i, item := range existingItems {
 		if err := item.Save(); err != nil {
 			t.Fatalf("could not save existingItems[%d] during setup; %v", i, err)
-			return
 		}
 	}
 
@@ -181,7 +179,6 @@ func TestFindCheckItem(t *testing.T) {
 	pathToTestDir := baseTestOutputDir + "/" + t.Name()
 	if err := os.MkdirAll(pathToTestDir, 0755); err != nil {
 		t.Fatalf("error creating test directory %s", pathToTestDir)
-		return
 	}
 	defer os.RemoveAll(pathToTestDir)
 	// debugging is easier when the DB is not in-memory.
@@ -198,11 +195,12 @@ func TestFindCheckItem(t *testing.T) {
 
 	t.Run("item exists in DB", func(t *testing.T) {
 		t.Run("same timestamps", func(t *testing.T) {
-			existingItem := makeItem(t.Name(), "")
+			name := t.Name()
+			existingItem := makeItem(name, name+"user")
 			if err := existingItem.Save(); err != nil {
 				t.Fatal(err)
 			}
-			incomingItem := makeItem(t.Name(), "")
+			incomingItem := makeItem(name, name+"user")
 			incomingItem.UpdatedAt = existingItem.UpdatedAt
 			incomingItem.CreatedAt = existingItem.CreatedAt
 
@@ -214,17 +212,18 @@ func TestFindCheckItem(t *testing.T) {
 		})
 
 		t.Run("incoming item is stale", func(t *testing.T) {
-			existingItem := makeItem(t.Name(), "")
+			name := t.Name()
+			existingItem := makeItem(name, name+"user")
 			if err := existingItem.Save(); err != nil {
 				t.Fatal(err)
 			}
-			incomingItem := makeItem(t.Name(), "")
+			incomingItem := makeItem(name, name+"user")
 			incomingItem.UpdatedAt = existingItem.UpdatedAt.Add(time.Hour * -1)
 			incomingItem.CreatedAt = existingItem.CreatedAt.Add(time.Hour * -2)
 
 			item, err := findCheckItem(incomingItem)
-			if err != ErrConflictingSync {
-				t.Errorf("unexpected error, expected %v got %v", ErrConflictingSync, err)
+			if err != errSyncConflict {
+				t.Errorf("unexpected error, expected %v got %v", errSyncConflict, err)
 			}
 			if ok := compareItems(t, item, &existingItem, false); !ok {
 				t.Errorf("actual did not equal expected")
@@ -232,18 +231,18 @@ func TestFindCheckItem(t *testing.T) {
 		})
 
 		t.Run("db item is stale", func(t *testing.T) {
-			existingItem := makeItem(t.Name(), "")
-			existingItem.UUID = t.Name()
+			name := t.Name()
+			existingItem := makeItem(name, name+"user")
 			if err := existingItem.Save(); err != nil {
 				t.Fatal(err)
 			}
-			incomingItem := makeItem(t.Name(), "")
+			incomingItem := makeItem(name, name+"user")
 			incomingItem.UpdatedAt = existingItem.UpdatedAt.Add(time.Hour * 1)
 			incomingItem.CreatedAt = existingItem.CreatedAt.Add(time.Hour * 2)
 
 			item, err := findCheckItem(incomingItem)
-			if err != ErrConflictingSync {
-				t.Errorf("unexpected error, expected %v got %v", ErrConflictingSync, err)
+			if err != errSyncConflict {
+				t.Errorf("unexpected error, expected %v got %v", errSyncConflict, err)
 			}
 			if ok := compareItems(t, item, &existingItem, false); !ok {
 				t.Errorf("actual did not equal expected")

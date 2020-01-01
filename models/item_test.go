@@ -1,11 +1,11 @@
 package models_test
 
 import (
-	"database/sql"
 	"testing"
 	"time"
 
 	"github.com/rafaelespinoza/standardfile/db"
+	"github.com/rafaelespinoza/standardfile/errs"
 	"github.com/rafaelespinoza/standardfile/models"
 )
 
@@ -13,10 +13,12 @@ func init() {
 	db.Init(":memory:")
 }
 
+const stubbedUUID = "2d931510-d99f-494a-8c67-87feb05e1594"
+
 func TestLoadItemByUUID(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		saved := &models.Item{
-			UserUUID:    "1234",
+			UserUUID:    stubbedUUID,
 			Content:     "alpha",
 			ContentType: "alpha",
 			EncItemKey:  "alpha",
@@ -43,17 +45,90 @@ func TestLoadItemByUUID(t *testing.T) {
 			t.Errorf("item should be nil")
 		}
 
-		if item, err := models.LoadItemByUUID("not-in-the-db"); err != sql.ErrNoRows {
-			t.Errorf("expected %v; got %v", sql.ErrNoRows, err)
+		if item, err := models.LoadItemByUUID(stubbedUUID); !errs.NotFoundError(err) {
+			t.Errorf("unexpected error type; %#v", err)
 		} else if item != nil {
 			t.Errorf("item should be nil")
 		}
 	})
 }
 
+func TestItemCreate(t *testing.T) {
+	t.Run("ok", func(t *testing.T) {
+		tests := []models.Item{
+			{
+				UserUUID:    "2" + stubbedUUID[1:],
+				Content:     "alpha",
+				ContentType: "alpha",
+				EncItemKey:  "alpha",
+				AuthHash:    "alpha",
+			},
+			{
+				UUID:        "1" + stubbedUUID[1:],
+				UserUUID:    "2" + stubbedUUID[1:],
+				Content:     "alpha",
+				ContentType: "alpha",
+				EncItemKey:  "alpha",
+				AuthHash:    "alpha",
+			},
+		}
+
+		for i, item := range tests {
+			if err := item.Create(); err != nil {
+				t.Error(err)
+			}
+			if item.UUID == "" {
+				t.Errorf("test [%d]; uuid should not be empty", i)
+			}
+			if item.CreatedAt.IsZero() {
+				t.Errorf("test [%d]; created at should not be zero", i)
+			}
+			if item.UpdatedAt.IsZero() {
+				t.Errorf("test [%d]; updated at should not be zero", i)
+			}
+			if exists, err := item.Exists(); err != nil {
+				t.Fatal(err)
+			} else if !exists {
+				t.Errorf("test [%d]; item should exist in db", i)
+			}
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		tests := []struct{ item models.Item }{
+			{
+				models.Item{
+					Content:     "alpha",
+					ContentType: "alpha",
+					EncItemKey:  "alpha",
+					AuthHash:    "alpha",
+				},
+			},
+		}
+
+		for i, test := range tests {
+			item := &test.item
+			if err := item.Create(); !errs.ValidationError(err) {
+				t.Errorf("test [%d]; expected validation error; got %#v", i, err)
+			}
+			if !item.CreatedAt.IsZero() {
+				t.Errorf("test [%d]; created at should be zero", i)
+			}
+			if !item.UpdatedAt.IsZero() {
+				t.Errorf("test [%d]; updated at should be zero", i)
+			}
+			if exists, err := item.Exists(); err != nil {
+				t.Fatal(err)
+			} else if exists {
+				t.Errorf("test [%d]; item should not exist in db", i)
+			}
+		}
+	})
+}
+
 func TestItemUpdate(t *testing.T) {
 	item := &models.Item{
-		UserUUID:    "1234",
+		UserUUID:    stubbedUUID,
 		Content:     "alpha",
 		ContentType: "alpha",
 		EncItemKey:  "alpha",
@@ -98,7 +173,7 @@ func TestItemUpdate(t *testing.T) {
 func TestItemDelete(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		item := &models.Item{
-			UserUUID:    "1234",
+			UserUUID:    stubbedUUID,
 			Content:     "alpha",
 			ContentType: "alpha",
 			EncItemKey:  "alpha",
@@ -154,7 +229,7 @@ func TestItemDelete(t *testing.T) {
 
 func TestItemCopy(t *testing.T) {
 	item := &models.Item{
-		UserUUID:    "1234",
+		UserUUID:    stubbedUUID,
 		Content:     "alpha",
 		ContentType: "alpha",
 		EncItemKey:  "alpha",

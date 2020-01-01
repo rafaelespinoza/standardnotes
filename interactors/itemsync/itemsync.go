@@ -114,10 +114,10 @@ func (r *Response) doItemSync(user models.User, req Request) (err error) {
 		// However, this may not be true if there's pagination. For now, just go
 		// back to the DB until there's more knowledge.
 		item, err = findCheckItem(incomingItem)
-		if err == ErrConflictingUUID {
+		if err == errUUIDConflict {
 			conflicts = append(conflicts, &uuidConflict{item: incomingItem})
 			continue
-		} else if err == ErrConflictingSync {
+		} else if err == errSyncConflict {
 			// Don't save the incoming value, add to the list of conflicted
 			// items so the client doesn't try to resync it.
 			conflicts = append(conflicts, &syncConflict{item: *item})
@@ -161,7 +161,7 @@ func findCheckItem(incomingItem models.Item) (item *models.Item, err error) {
 		// probably importing notes from another account? This is translated
 		// from the ruby implementation, and I don't know how they decided that
 		// any error here would be considered a conflicting UUID...
-		err = ErrConflictingUUID
+		err = errUUIDConflict
 		return
 	} else if !alreadyExists {
 		// hydrate item fields with incoming parameters
@@ -191,7 +191,7 @@ func findCheckItem(incomingItem models.Item) (item *models.Item, err error) {
 	}
 
 	if !saveIncoming {
-		err = ErrConflictingSync
+		err = errSyncConflict
 		return
 	}
 

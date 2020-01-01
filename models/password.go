@@ -9,6 +9,27 @@ import (
 	"github.com/rafaelespinoza/standardfile/encryption"
 )
 
+const (
+	// _MinPasswordLength is the length of the shortest allowable password.
+	_MinPasswordLength = 24
+)
+
+// ValidatePassword returns an error in the password is invalid. The rails
+// implementation does not do any do any password validation; likely because the
+// actual password is not stored in the backend at all, it is obfuscated and
+// stored (in pieces) on the client and the backend stores a computed version of
+// the password. However, in the very small possibility that the client does not
+// always take care of this, we're going to do a minimal and simple validation
+// anyways. See more at https://docs.standardnotes.org/specification/encryption.
+func ValidatePassword(password string) error {
+	if len(password) < _MinPasswordLength {
+		return validationError{
+			fmt.Errorf("password length must be >= %d", _MinPasswordLength),
+		}
+	}
+	return nil
+}
+
 // PwGenParams is a set of authentication parameters used by the client to
 // generate user passwords.
 type PwGenParams struct {

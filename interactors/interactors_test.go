@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/rafaelespinoza/standardfile/db"
+	"github.com/rafaelespinoza/standardfile/errs"
 	"github.com/rafaelespinoza/standardfile/interactors"
 	"github.com/rafaelespinoza/standardfile/models"
 )
@@ -52,15 +53,15 @@ func TestMakeAuthParams(t *testing.T) {
 		if err = user.Create(); err != nil {
 			t.Fatal(err)
 		}
-		if _, err = interactors.MakeAuthParams(""); err != interactors.ErrInvalidEmail {
-			t.Errorf("expected %v but got %v", interactors.ErrInvalidEmail, err)
+		if _, err = interactors.MakeAuthParams(""); !errs.ValidationError(err) {
+			t.Errorf("expected validation error but got %#v", err)
 		}
 		longEmail := strings.Repeat("foobar", 42) + "@example.com"
-		if _, err = interactors.MakeAuthParams(longEmail); err != interactors.ErrInvalidEmail {
-			t.Errorf("expected %v but got %v", interactors.ErrInvalidEmail, err)
+		if _, err = interactors.MakeAuthParams(longEmail); !errs.ValidationError(err) {
+			t.Errorf("expected validation error but got %#v", err)
 		}
-		if _, err = interactors.MakeAuthParams("foobar"); err != interactors.ErrInvalidEmail {
-			t.Errorf("expected %v but got %v", interactors.ErrInvalidEmail, err)
+		if _, err = interactors.MakeAuthParams("foobar"); !errs.ValidationError(err) {
+			t.Errorf("expected validation error but got %#v", err)
 		}
 	})
 }
@@ -218,11 +219,11 @@ func TestChangeUserPassword(t *testing.T) {
 
 			newPassword := models.NewPassword{User: *user}
 			token, err := interactors.ChangeUserPassword(user, newPassword)
-			if err != interactors.ErrNoPasswordProvidedDuringChange {
-				t.Errorf(
-					"expected %v, got %v",
-					interactors.ErrNoPasswordProvidedDuringChange, err,
-				)
+			if !testError(t, err, errExpectations{
+				messageFragment: "password",
+				validation:      true,
+			}) {
+				t.Errorf("expected validation error, got %v", err)
 			}
 			if token != "" {
 				t.Errorf("expected empty token, got %q", token)
@@ -242,11 +243,11 @@ func TestChangeUserPassword(t *testing.T) {
 				CurrentPassword: user.PwHashState(),
 			}
 			token, err := interactors.ChangeUserPassword(user, newPassword)
-			if err != interactors.ErrMissingNewAuthParams {
-				t.Errorf(
-					"expected %v, got %v",
-					interactors.ErrMissingNewAuthParams, err,
-				)
+			if !testError(t, err, errExpectations{
+				messageFragment: "param",
+				validation:      true,
+			}) {
+				t.Errorf("expected validation error, got %v", err)
 			}
 			if token != "" {
 				t.Errorf("expected empty token, got %q", token)
@@ -269,15 +270,62 @@ func TestChangeUserPassword(t *testing.T) {
 				CurrentPassword: currPW,
 			}
 			token, err := interactors.ChangeUserPassword(user, newPassword)
-			if err != interactors.ErrPasswordIncorrect {
-				t.Errorf(
-					"expected %v, got %v",
-					interactors.ErrPasswordIncorrect, err,
-				)
+			if !testError(t, err, errExpectations{
+				messageFragment: "password",
+				validation:      true,
+			}) {
+				t.Errorf("expected validation error, got %v", err)
 			}
 			if token != "" {
 				t.Errorf("expected empty token, got %q", token)
 			}
 		})
 	})
+}
+
+type errExpectations struct {
+	messageFragment string
+	notFound        bool
+	validation      bool
+}
+
+func testError(t *testing.T, actualErr error, expErr errExpectations) (ok bool) {
+	ok = true
+	t.Helper()
+
+	expEmptyErr := expErr.messageFragment == "" && !expErr.notFound && !expErr.validation
+	if actualErr != nil && expEmptyErr {
+		t.Error("actual error is not nil, expected error is empty")
+		ok = false
+		return
+	} else if actualErr == nil && !expEmptyErr {
+		t.Error("actual error is nil, expected error is not empty")
+		ok = false
+		return
+	}
+
+	actNotFound := errs.NotFoundError(actualErr)
+	if actNotFound != expErr.notFound {
+		t.Errorf(
+			"wrong values for NotFoundError; got %t, expected %t",
+			actNotFound, expErr.notFound,
+		)
+		ok = false
+	}
+
+	actValidation := errs.ValidationError(actualErr)
+	if actValidation != expErr.validation {
+		t.Errorf(
+			"wrong values for ValidationError; got %t, expected %t",
+			actValidation, expErr.validation,
+		)
+		ok = false
+	}
+
+	actMessage := actualErr.Error()
+	if !strings.Contains(actMessage, expErr.messageFragment) {
+		t.Errorf("error message %q does not contain %q", actMessage, expErr.messageFragment)
+		ok = false
+	}
+	return
 }
