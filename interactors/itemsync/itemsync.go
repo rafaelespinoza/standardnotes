@@ -34,25 +34,22 @@ type Response struct {
 
 // SyncUserItems manages user item syncs.
 func SyncUserItems(user models.User, req Request) (res *Response, err error) {
-	var cursorTime time.Time
+	res = &Response{
+		Retrieved: make([]models.Item, 0),
+		Saved:     make([]models.Item, 0),
+		Conflicts: make([]ItemConflict, 0),
+	}
 
-	res = &Response{}
-
-	if err = res.doItemSync(user, req); err != nil {
+	if len(user.UUID) < models.MinIDLength {
+		err = itemSyncError{
+			error:      fmt.Errorf("user id invalid"),
+			validation: true,
+		}
 		return
 	}
 
-	if len(res.Retrieved) > 0 {
-		cursorTime = res.Retrieved[len(res.Retrieved)-1].UpdatedAt
-	}
-	if !cursorTime.IsZero() {
-		res.CursorToken = encodeTimeToken(cursorTime)
-	}
-
-	if len(res.Saved) < 1 {
-		res.SyncToken = encodeTimeToken(time.Now())
-	} else {
-		res.SyncToken = encodeTimeToken(res.Saved[0].UpdatedAt)
+	if err = res.doItemSync(user, req); err != nil {
+		return
 	}
 
 	err = enqueueRealtimeExtensionJobs(user, req.Items)
@@ -84,6 +81,7 @@ func (r *Response) doItemSync(user models.User, req Request) (err error) {
 	var saved models.Items
 	var conflicts []ItemConflict
 
+	// prepare a sync by loading the user's items from the DB.
 	limit := req.Limit
 	if limit <= 1 {
 		limit = models.UserItemMaxPageSize / 2
@@ -91,12 +89,11 @@ func (r *Response) doItemSync(user models.User, req Request) (err error) {
 		limit = models.UserItemMaxPageSize
 	}
 
-	// prepare a sync by loading the user's items from the DB.
 	if req.CursorToken != "" {
-		date := decodeTimeToken(req.CursorToken)
+		date := decodePaginationToken(req.CursorToken)
 		retrieved, err = user.LoadItemsAfter(date, true, req.ContentType, limit)
 	} else if req.SyncToken != "" {
-		date := decodeTimeToken(req.SyncToken)
+		date := decodePaginationToken(req.SyncToken)
 		retrieved, err = user.LoadItemsAfter(date, false, req.ContentType, limit)
 	} else {
 		retrieved, err = user.LoadAllItems(req.ContentType, limit)
@@ -109,24 +106,31 @@ func (r *Response) doItemSync(user models.User, req Request) (err error) {
 	// sync user items, identify conflicts.
 	for _, incomingItem := range req.Items {
 		var item *models.Item
+		// ierr is the error is scoped to this block. You don't want a
+		// conflicting item error to overwrite this function's return error.
+		var ierr error
 		// Probably don't need to go all the way back to the DB to check for
 		// conflicts since the items ought to be retrieved by this point.
 		// However, this may not be true if there's pagination. For now, just go
 		// back to the DB until there's more knowledge.
-		item, err = findCheckItem(incomingItem)
-		if err == errUUIDConflict {
+		item, ierr = findCheckItem(incomingItem)
+		if ierr == errUUIDConflict {
 			conflicts = append(conflicts, &uuidConflict{item: incomingItem})
 			continue
-		} else if err == errSyncConflict {
+		} else if ierr == errSyncConflict {
 			// Don't save the incoming value, add to the list of conflicted
 			// items so the client doesn't try to resync it.
 			conflicts = append(conflicts, &syncConflict{item: *item})
 			retrieved.Delete(item.UUID) // Exclude item from subsequent syncs.
 			continue
-		} else if err != nil {
+		} else if ierr != nil {
+			err = ierr
 			return
 		}
-
+		// in case the incoming item tries to change UserUUID, change it back to
+		// the known user.
+		item.UserUUID = user.UUID
+		incomingItem.UserUUID = user.UUID
 		if err = item.MergeProtected(&incomingItem); err != nil {
 			return
 		}
@@ -144,9 +148,33 @@ func (r *Response) doItemSync(user models.User, req Request) (err error) {
 		}
 		saved = append(saved, *item)
 	}
+	if saved == nil {
+		saved = make([]models.Item, 0)
+	}
+	if conflicts == nil {
+		conflicts = make([]ItemConflict, 0)
+	}
+	if len(retrieved) >= limit { // could there be more rows?
+		// Should be greatest value. Depends on the ordering of DB results.
+		cursorTime := retrieved[len(retrieved)-1].UpdatedAt
+		r.CursorToken = encodePaginationToken(cursorTime)
+	}
+
+	var latestUpdate time.Time
+	if len(saved) > 0 {
+		// Should be greatest value. Depends on the ordering of DB results.
+		latestUpdate = saved[len(saved)-1].UpdatedAt
+	} else {
+		latestUpdate = time.Now()
+	}
+	// avoid returning same row in a subsequent sync
+	latestUpdate = latestUpdate.Add(time.Microsecond)
+	r.SyncToken = encodePaginationToken(latestUpdate)
+
 	r.Retrieved = retrieved
 	r.Saved = saved
 	r.Conflicts = conflicts
+
 	return
 }
 
@@ -198,34 +226,46 @@ func findCheckItem(incomingItem models.Item) (item *models.Item, err error) {
 	return
 }
 
-// encodeTimeToken generates a token for the time. This is not the same kind of
-// token used in authentication.
-func encodeTimeToken(date time.Time) string {
+const _TokenVersion = "2"
+
+// encodePaginationToken generates a token for the time.
+func encodePaginationToken(date time.Time) string {
 	return base64.URLEncoding.EncodeToString(
 		[]byte(
 			fmt.Sprintf(
-				"1:%d", // TODO: make use of "version" 1 and 2. (part before :)
-				date.UnixNano(),
+				"%s:%d",
+				_TokenVersion, date.UnixNano(),
 			),
 		),
 	)
 }
 
-// decodeTimeToken converts a token to a time. This is not the same kind of token
-// used in authentication.
-func decodeTimeToken(token string) time.Time {
+// decodePaginationToken converts a token to a time.
+func decodePaginationToken(token string) time.Time {
 	decoded, err := base64.URLEncoding.DecodeString(token)
 	if err != nil {
 		logger.LogIfDebug(err)
 		return time.Now()
 	}
 	parts := strings.Split(string(decoded), ":")
-	str, err := strconv.ParseUint(parts[1], 10, 64)
+	if len(parts) != 2 {
+		err = fmt.Errorf("expected %d parts in decoded token", 2)
+		logger.LogIfDebug(err)
+		return time.Now()
+	}
+	num, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
 		logger.LogIfDebug(err)
 		return time.Now()
 	}
-	// TODO: output "version" 1, 2 differently. See
-	// `lib/sync_engine/abstract/sync_manager.rb` in the ruby sync-server
-	return time.Time(time.Unix(0, int64(str)))
+	return time.Unix(0, num)
 }
+
+type itemSyncError struct {
+	error
+	notFound   bool
+	validation bool
+}
+
+func (i itemSyncError) NotFound() bool   { return i.notFound }
+func (i itemSyncError) Validation() bool { return i.validation }

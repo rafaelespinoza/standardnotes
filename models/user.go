@@ -251,22 +251,23 @@ const UserItemMaxPageSize = 1000
 // comparison.
 func (u *User) LoadItemsAfter(date time.Time, gte bool, contentType string, limit int) (items Items, err error) {
 	// TODO: add condition: `WHERE content_type = req.ContentType`
-	// TODO: use limit, set to max if too high.
 	if gte {
 		err = db.Select(`
 			SELECT *
 			FROM items
 			WHERE user_uuid=? AND updated_at >= ?
-			ORDER BY updated_at DESC`,
-			&items, u.UUID, date,
+			ORDER BY updated_at ASC
+			LIMIT ?`,
+			&items, u.UUID, date, limit,
 		)
 	} else {
 		err = db.Select(`
 			SELECT *
 			FROM items
 			WHERE user_uuid=? AND updated_at > ?
-			ORDER BY updated_at DESC`,
-			&items, u.UUID, date,
+			ORDER BY updated_at ASC
+			LIMIT ?`,
+			&items, u.UUID, date, limit,
 		)
 
 	}
@@ -277,10 +278,9 @@ func (u *User) LoadItemsAfter(date time.Time, gte bool, contentType string, limi
 // used for initial item syncs.
 func (u *User) LoadAllItems(contentType string, limit int) (items Items, err error) {
 	// TODO: add condition: `WHERE content_type = req.ContentType`
-	// TODO: use limit, set to max if too high.
 	err = db.Select(
-		"SELECT * FROM items WHERE user_uuid=? AND deleted = ? ORDER BY updated_at DESC",
-		&items, u.UUID, false,
+		"SELECT * FROM items WHERE user_uuid=? AND deleted = ? ORDER BY updated_at ASC LIMIT ?",
+		&items, u.UUID, false, limit,
 	)
 	return
 }
