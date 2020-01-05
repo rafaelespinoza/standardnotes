@@ -3,6 +3,7 @@ package models
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -166,6 +167,22 @@ func (i *Item) MergeProtected(updates *Item) (err error) {
 		i.Deleted = updates.Deleted
 	}
 	return
+}
+
+const itemTimestampFormat = "2006-01-02T15:04:05.000Z"
+
+type jsonItem Item
+
+func (i *Item) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		*jsonItem
+		CreatedAt string `json:"created_at"`
+		UpdatedAt string `json:"updated_at"`
+	}{
+		jsonItem:  (*jsonItem)(i),
+		CreatedAt: i.CreatedAt.Format(itemTimestampFormat),
+		UpdatedAt: i.UpdatedAt.Format(itemTimestampFormat),
+	})
 }
 
 type Frequency uint8
