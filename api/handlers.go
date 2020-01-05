@@ -7,8 +7,8 @@ import (
 	"net/http"
 
 	"github.com/rafaelespinoza/standardfile/errs"
-	"github.com/rafaelespinoza/standardfile/interactors"
 	"github.com/rafaelespinoza/standardfile/interactors/itemsync"
+	userInteractors "github.com/rafaelespinoza/standardfile/interactors/user"
 	"github.com/rafaelespinoza/standardfile/logger"
 	"github.com/rafaelespinoza/standardfile/models"
 )
@@ -59,7 +59,7 @@ func readJSONRequest(r *http.Request, dst interface{}) error {
 }
 
 func authenticateUser(r *http.Request) (*models.User, error) {
-	return interactors.AuthenticateUser(r.Header.Get("Authorization"))
+	return userInteractors.AuthenticateUser(r.Header.Get("Authorization"))
 }
 
 // authHandlers groups http handlers for "/auth/" routes.
@@ -90,7 +90,7 @@ func changePassword(w http.ResponseWriter, r *http.Request) {
 		mustShowError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
-	token, err := interactors.ChangeUserPassword(user, password)
+	token, err := userInteractors.ChangeUserPassword(user, password)
 	if errs.ValidationError(err) {
 		mustShowError(w, err, http.StatusUnauthorized)
 		return
@@ -131,14 +131,14 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 // registerUser is the registration handler.
 // POST /auth/register
 func registerUser(w http.ResponseWriter, r *http.Request) {
-	var params interactors.RegisterUserParams
+	var params userInteractors.RegisterUserParams
 
 	if err := readJSONRequest(r, &params); err != nil {
 		mustShowError(w, err, http.StatusUnprocessableEntity)
 		return
 	}
 	logger.LogIfDebug("Request:", params)
-	user, token, err := interactors.RegisterUser(params)
+	user, token, err := userInteractors.RegisterUser(params)
 	if err != nil {
 		mustShowError(w, err, http.StatusUnprocessableEntity)
 		return
@@ -163,7 +163,7 @@ func loginUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	logger.LogIfDebug("Request:", params)
-	user, token, err := interactors.LoginUser(
+	user, token, err := userInteractors.LoginUser(
 		params.Email,
 		&models.PwHash{Value: params.Password},
 	)
@@ -185,7 +185,7 @@ func getParams(w http.ResponseWriter, r *http.Request) {
 	logger.LogIfDebug("Request:", string(email))
 	var params models.PwGenParams
 	var err error
-	if params, err = interactors.MakeAuthParams(email); sanitizeAuthError(err) {
+	if params, err = userInteractors.MakeAuthParams(email); sanitizeAuthError(err) {
 		mustShowError(w, err, http.StatusUnauthorized)
 		return
 	} else if err != nil {

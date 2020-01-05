@@ -6,7 +6,7 @@ import (
 
 	"github.com/rafaelespinoza/standardfile/db"
 	"github.com/rafaelespinoza/standardfile/errs"
-	"github.com/rafaelespinoza/standardfile/interactors"
+	userInteractors "github.com/rafaelespinoza/standardfile/interactors/user"
 	"github.com/rafaelespinoza/standardfile/models"
 )
 
@@ -25,7 +25,7 @@ func TestMakeAuthParams(t *testing.T) {
 			t.Fatal(err)
 		}
 		var params models.PwGenParams
-		if params, err = interactors.MakeAuthParams(user.Email); err != nil {
+		if params, err = userInteractors.MakeAuthParams(user.Email); err != nil {
 			t.Error(err)
 		}
 		if params.PwFunc != "pbkdf2" {
@@ -53,22 +53,22 @@ func TestMakeAuthParams(t *testing.T) {
 		if err = user.Create(); err != nil {
 			t.Fatal(err)
 		}
-		if _, err = interactors.MakeAuthParams(""); !errs.ValidationError(err) {
+		if _, err = userInteractors.MakeAuthParams(""); !errs.ValidationError(err) {
 			t.Errorf("expected validation error but got %#v", err)
 		}
 		longEmail := strings.Repeat("foobar", 42) + "@example.com"
-		if _, err = interactors.MakeAuthParams(longEmail); !errs.ValidationError(err) {
+		if _, err = userInteractors.MakeAuthParams(longEmail); !errs.ValidationError(err) {
 			t.Errorf("expected validation error but got %#v", err)
 		}
-		if _, err = interactors.MakeAuthParams("foobar"); !errs.ValidationError(err) {
+		if _, err = userInteractors.MakeAuthParams("foobar"); !errs.ValidationError(err) {
 			t.Errorf("expected validation error but got %#v", err)
 		}
 	})
 }
 
 func TestRegisterUser(t *testing.T) {
-	user, tokenAfterRegistration, err := interactors.RegisterUser(
-		interactors.RegisterUserParams{
+	user, tokenAfterRegistration, err := userInteractors.RegisterUser(
+		userInteractors.RegisterUserParams{
 			Email:    "user2@local",
 			Password: "3cb5561daa49bd5b4438ad214a6f9a6d9b056a2c0b9a91991420ad9d658b8fac",
 		},
@@ -84,7 +84,7 @@ func TestRegisterUser(t *testing.T) {
 	}
 
 	password := user.PwHashState()
-	user, tokenAfterLogin, err := interactors.LoginUser(
+	user, tokenAfterLogin, err := userInteractors.LoginUser(
 		user.Email,
 		&password,
 	)
@@ -118,7 +118,7 @@ func TestLoginUser(t *testing.T) {
 		}
 
 		password := user.PwHashState()
-		user, token, err := interactors.LoginUser(email, &password)
+		user, token, err := userInteractors.LoginUser(email, &password)
 		if err != nil {
 			t.Error(err)
 		}
@@ -141,7 +141,7 @@ func TestLoginUser(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			user, token, err := interactors.LoginUser(email, &models.PwHash{Value: plaintextPassword[1:]})
+			user, token, err := userInteractors.LoginUser(email, &models.PwHash{Value: plaintextPassword[1:]})
 			if err == nil {
 				t.Errorf("expected error; got %v", err)
 			}
@@ -161,7 +161,7 @@ func TestLoginUser(t *testing.T) {
 			user.PwNonce = "stub_password_nonce"
 
 			password := user.PwHashState()
-			user, token, err := interactors.LoginUser(email, &password)
+			user, token, err := userInteractors.LoginUser(email, &password)
 			if err == nil {
 				t.Errorf("expected error; got %v", err)
 			}
@@ -179,8 +179,8 @@ func TestChangeUserPassword(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		var err error
 
-		user, oldToken, err := interactors.RegisterUser(
-			interactors.RegisterUserParams{
+		user, oldToken, err := userInteractors.RegisterUser(
+			userInteractors.RegisterUserParams{
 				Email:    t.Name() + "@example.com",
 				Password: "testpassword123",
 				PwNonce:  "stub_password_nonce",
@@ -195,7 +195,7 @@ func TestChangeUserPassword(t *testing.T) {
 			NewPassword:     models.PwHash{Value: user.Password[1:]},
 		}
 
-		newToken, err := interactors.ChangeUserPassword(user, newPassword)
+		newToken, err := userInteractors.ChangeUserPassword(user, newPassword)
 		if err != nil {
 			t.Errorf("did not expect error; got %v", err)
 		}
@@ -218,7 +218,7 @@ func TestChangeUserPassword(t *testing.T) {
 			}
 
 			newPassword := models.NewPassword{User: *user}
-			token, err := interactors.ChangeUserPassword(user, newPassword)
+			token, err := userInteractors.ChangeUserPassword(user, newPassword)
 			if !testError(t, err, errExpectations{
 				messageFragment: "password",
 				validation:      true,
@@ -242,7 +242,7 @@ func TestChangeUserPassword(t *testing.T) {
 				User:            *user,
 				CurrentPassword: user.PwHashState(),
 			}
-			token, err := interactors.ChangeUserPassword(user, newPassword)
+			token, err := userInteractors.ChangeUserPassword(user, newPassword)
 			if !testError(t, err, errExpectations{
 				messageFragment: "param",
 				validation:      true,
@@ -269,7 +269,7 @@ func TestChangeUserPassword(t *testing.T) {
 				User:            *user,
 				CurrentPassword: currPW,
 			}
-			token, err := interactors.ChangeUserPassword(user, newPassword)
+			token, err := userInteractors.ChangeUserPassword(user, newPassword)
 			if !testError(t, err, errExpectations{
 				messageFragment: "password",
 				validation:      true,
@@ -328,4 +328,123 @@ func testError(t *testing.T, actualErr error, expErr errExpectations) (ok bool) 
 		ok = false
 	}
 	return
+}
+
+func TestAuthenticateUser(t *testing.T) {
+	t.Run("ok", func(t *testing.T) {
+		var tok string
+		var err error
+		var knownUser, authenticatedUser *models.User
+		knownUser = models.NewUser()
+		knownUser.Email = t.Name() + "@example.com"
+		knownUser.Password = "testpassword123"
+		knownUser.PwNonce = "stub_password_nonce"
+		if err = knownUser.Create(); err != nil {
+			t.Fatal(err)
+		}
+		if tok, err = models.EncodeToken(*knownUser); err != nil {
+			t.Fatal(err)
+		}
+		if authenticatedUser, err = userInteractors.AuthenticateUser("Bearer " + tok); err != nil {
+			t.Errorf("did not expect error; got %v", err)
+		} else if authenticatedUser.UUID != knownUser.UUID {
+			t.Errorf("users not equal\n%#v\n%#v\n", *authenticatedUser, *knownUser)
+		}
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		t.Run("invalid header", func(t *testing.T) {
+			var user *models.User
+			var err error
+			expError := errExpectations{messageFragment: "header", notFound: false, validation: true}
+
+			user, err = userInteractors.AuthenticateUser("")
+			testError(t, err, expError)
+			if user != nil {
+				t.Error("user should be nil")
+			}
+
+			user, err = userInteractors.AuthenticateUser("foobar")
+			testError(t, err, expError)
+			if user != nil {
+				t.Error("user should be nil")
+			}
+
+			user, err = userInteractors.AuthenticateUser("foo bar")
+			testError(t, err, expError)
+			if user != nil {
+				t.Error("user should be nil")
+			}
+		})
+
+		t.Run("token validation", func(t *testing.T) {
+			expError := errExpectations{messageFragment: "token", notFound: false, validation: true}
+			user, err := userInteractors.AuthenticateUser("Bearer foobar")
+
+			testError(t, err, expError)
+			if user != nil {
+				t.Error("user should be nil")
+			}
+		})
+
+		t.Run("unknown user", func(t *testing.T) {
+			var tok string
+			var err error
+			unknownUser := models.User{ // do not save in DB
+				UUID:     "not a real UUID", // need this to attempt db lookup
+				Email:    t.Name() + "@example.com",
+				Password: "testpassword123",
+				PwNonce:  "stub_password_nonce",
+			}
+
+			if tok, err = models.EncodeToken(unknownUser); err != nil {
+				t.Fatal(err)
+			}
+
+			user, err := userInteractors.AuthenticateUser("Bearer " + tok)
+			testError(t, err, errExpectations{"email", true, false})
+			if user != nil {
+				t.Error("user should be nil")
+			}
+		})
+
+		t.Run("invalid password", func(t *testing.T) {
+			var tok string
+			var err error
+			knownUser := models.User{
+				Email:    t.Name() + "@example.com",
+				Password: "testpassword123",
+				PwNonce:  "stub_password_nonce",
+			}
+
+			if err = knownUser.Create(); err != nil {
+				t.Fatal(err)
+			}
+			if tok, err = models.EncodeToken(knownUser); err != nil {
+				t.Fatal(err)
+			}
+
+			// make a legit token stale by updating password
+			if _, err = userInteractors.ChangeUserPassword(
+				&knownUser,
+				models.NewPassword{
+					User:            knownUser,
+					CurrentPassword: knownUser.PwHashState(),
+					NewPassword:     models.PwHash{Value: knownUser.Password[1:]},
+				},
+			); err != nil {
+				t.Fatal(err)
+			}
+			expError := errExpectations{
+				messageFragment: "password",
+				notFound:        false,
+				validation:      true,
+			}
+			user, err := userInteractors.AuthenticateUser("Bearer " + tok)
+			testError(t, err, expError)
+			if user != nil {
+				t.Error("user should be nil")
+			}
+		})
+	})
 }

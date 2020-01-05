@@ -8,22 +8,8 @@ import (
 
 	"github.com/rafaelespinoza/standardfile/errs"
 	"github.com/rafaelespinoza/standardfile/jobs"
+	"github.com/rafaelespinoza/standardfile/logger"
 	"github.com/rafaelespinoza/standardfile/models"
-)
-
-var (
-	errMissingNewAuthParams = errors.New(
-		"the change password request is missing new auth parameters, please try again",
-	)
-	errNoPasswordProvidedDuringChange = errors.New(strings.TrimSpace(`
-		your current password is required to change your password,
-		please update your application if you do not see this option.`,
-	))
-	errPasswordIncorrect = errors.New(
-		"the current password you entered is incorrect, please try again",
-	)
-	// errInvalidEmailOrPassword is a fallback error.
-	errInvalidEmailOrPassword = errors.New("invalid email or password")
 )
 
 func MakeAuthParams(email string) (params models.PwGenParams, err error) {
@@ -163,6 +149,30 @@ func ChangeUserPassword(user *models.User, password models.NewPassword) (token s
 }
 
 var (
+	errMissingNewAuthParams = errors.New(
+		"the change password request is missing new auth parameters, please try again",
+	)
+	errNoPasswordProvidedDuringChange = errors.New(strings.TrimSpace(`
+		your current password is required to change your password,
+		please update your application if you do not see this option.`,
+	))
+	errPasswordIncorrect = errors.New(
+		"the current password you entered is incorrect, please try again",
+	)
+	// errInvalidEmailOrPassword is a fallback error.
+	errInvalidEmailOrPassword = errors.New("invalid email or password")
+)
+
+type authenticationError struct {
+	error
+	notFound   bool
+	validation bool
+}
+
+func (e authenticationError) NotFound() bool   { return e.notFound }
+func (e authenticationError) Validation() bool { return e.validation }
+
+var (
 	_ errs.NotFound   = (*authenticationError)(nil)
 	_ errs.Validation = (*authenticationError)(nil)
 )
@@ -177,6 +187,49 @@ func maybeMutateError(in error) (out error) {
 		out = authenticationError{error: in, validation: true}
 	} else {
 		out = in
+	}
+	return
+}
+
+func AuthenticateUser(header string) (user *models.User, err error) {
+	authHeaderParts := strings.Split(header, " ")
+
+	if len(authHeaderParts) != 2 || strings.ToLower(authHeaderParts[0]) != "bearer" {
+		err = authenticationError{
+			error:      errors.New("invalid authorization header"),
+			validation: true,
+		}
+		return
+	}
+
+	var token models.Token
+	if token, err = models.DecodeToken(authHeaderParts[1]); err != nil {
+		err = authenticationError{error: err, validation: true}
+		return
+	}
+
+	if !token.Valid() {
+		err = authenticationError{
+			error:      fmt.Errorf("invalid token"),
+			validation: true,
+		}
+		return
+	}
+	claims := token.Claims()
+	logger.LogIfDebug("token is valid, claims: ", claims)
+
+	if user, err = models.LoadUserByUUID(claims.UUID()); err != nil {
+		logger.LogIfDebug("LoadUserByUUID error: ", err)
+		err = maybeMutateError(err)
+		return
+	}
+
+	if !user.Validate(claims.Hash()) {
+		user = nil
+		err = authenticationError{
+			error:      errors.New("password does not match"),
+			validation: true,
+		}
 	}
 	return
 }
