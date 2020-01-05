@@ -19,8 +19,8 @@ func TestItemConflict(t *testing.T) {
 		errUUIDConflict: {
 			inputItem: models.Item{
 				UUID:      "foo",
-				CreatedAt: time.Now().Add(-time.Hour),
-				UpdatedAt: time.Now().Add(-time.Minute),
+				CreatedAt: time.Now().UTC().Add(-time.Hour),
+				UpdatedAt: time.Now().UTC().Add(-time.Minute),
 			},
 			expectedKeys: []string{"type", "unsaved_item"},
 			expectedType: "uuid_conflict",
@@ -28,8 +28,8 @@ func TestItemConflict(t *testing.T) {
 		errSyncConflict: {
 			inputItem: models.Item{
 				UUID:      "foo",
-				CreatedAt: time.Now().Add(-time.Hour),
-				UpdatedAt: time.Now().Add(-time.Minute),
+				CreatedAt: time.Now().UTC().Add(-time.Hour),
+				UpdatedAt: time.Now().UTC().Add(-time.Minute),
 			},
 			expectedKeys: []string{"type", "server_item"},
 			expectedType: "sync_conflict",

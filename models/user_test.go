@@ -172,8 +172,8 @@ func TestUserMakeSaferCopy(t *testing.T) {
 		PwKeySize: 456,
 		PwNonce:   "stub_password_nonce",
 		PwSalt:    "stub_password_salt",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
 	}
 
 	dupe := user.MakeSaferCopy()

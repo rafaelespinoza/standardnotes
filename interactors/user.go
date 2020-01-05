@@ -73,7 +73,7 @@ func RegisterUser(params RegisterUserParams) (user *models.User, token string, e
 	if err = jobs.PerformRegistrationJob(
 		jobs.RegistrationJobParams{
 			Email:     user.Email,
-			CreatedAt: user.CreatedAt,
+			CreatedAt: user.CreatedAt.UTC(),
 		},
 	); err != nil {
 		// log it, but keep going

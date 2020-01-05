@@ -156,16 +156,16 @@ func (r *Response) doItemSync(user models.User, req Request) (err error) {
 	}
 	if len(retrieved) >= limit { // could there be more rows?
 		// Should be greatest value. Depends on the ordering of DB results.
-		cursorTime := retrieved[len(retrieved)-1].UpdatedAt
+		cursorTime := retrieved[len(retrieved)-1].UpdatedAt.UTC()
 		r.CursorToken = encodePaginationToken(cursorTime)
 	}
 
 	var latestUpdate time.Time
 	if len(saved) > 0 {
 		// Should be greatest value. Depends on the ordering of DB results.
-		latestUpdate = saved[len(saved)-1].UpdatedAt
+		latestUpdate = saved[len(saved)-1].UpdatedAt.UTC()
 	} else {
-		latestUpdate = time.Now()
+		latestUpdate = time.Now().UTC()
 	}
 	// avoid returning same row in a subsequent sync
 	latestUpdate = latestUpdate.Add(time.Microsecond)
@@ -206,8 +206,8 @@ func findCheckItem(incomingItem models.Item) (item *models.Item, err error) {
 	// it and decide if it's a conflict.
 
 	var saveIncoming bool
-	theirsUpdated := incomingItem.UpdatedAt
-	oursUpdated := item.UpdatedAt
+	theirsUpdated := incomingItem.UpdatedAt.UTC()
+	oursUpdated := item.UpdatedAt.UTC()
 	diff := theirsUpdated.Sub(oursUpdated) * time.Second
 
 	if diff == 0 {
@@ -245,18 +245,18 @@ func decodePaginationToken(token string) time.Time {
 	decoded, err := base64.URLEncoding.DecodeString(token)
 	if err != nil {
 		logger.LogIfDebug(err)
-		return time.Now()
+		return time.Now().UTC()
 	}
 	parts := strings.Split(string(decoded), ":")
 	if len(parts) != 2 {
 		err = fmt.Errorf("expected %d parts in decoded token", 2)
 		logger.LogIfDebug(err)
-		return time.Now()
+		return time.Now().UTC()
 	}
 	num, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
 		logger.LogIfDebug(err)
-		return time.Now()
+		return time.Now().UTC()
 	}
 	return time.Unix(0, num)
 }

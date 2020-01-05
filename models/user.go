@@ -34,8 +34,8 @@ func NewUser() *User {
 		PwAlg:     "sha512",
 		PwKeySize: 512,
 		PwFunc:    "pbkdf2",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
 	}
 }
 
@@ -125,7 +125,7 @@ func (u *User) Create() (err error) {
 	id := uuid.New()
 	u.UUID = uuid.Must(id, nil).String()
 	u.Password = Hash(u.Password)
-	u.CreatedAt = time.Now()
+	u.CreatedAt = time.Now().UTC()
 
 	err = db.Query(`
 		INSERT INTO users (
@@ -158,7 +158,7 @@ func (u *User) Update(updates User) (err error) {
 	u.PwKeySize = updates.PwKeySize
 	u.PwNonce = updates.PwNonce
 	u.PwSalt = updates.PwSalt
-	u.UpdatedAt = time.Now()
+	u.UpdatedAt = time.Now().UTC()
 
 	err = db.Query(`
 		UPDATE users

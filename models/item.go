@@ -69,8 +69,8 @@ func (i *Item) Create() error {
 		id := uuid.New()
 		i.UUID = uuid.Must(id, nil).String()
 	}
-	i.CreatedAt = time.Now()
-	i.UpdatedAt = time.Now()
+	i.CreatedAt = time.Now().UTC()
+	i.UpdatedAt = time.Now().UTC()
 	logger.LogIfDebug("Create:", i.UUID)
 	return db.Query(`
 		INSERT INTO items (
@@ -82,7 +82,7 @@ func (i *Item) Create() error {
 
 // Update updates the Item in the DB.
 func (i *Item) Update() error {
-	i.UpdatedAt = time.Now()
+	i.UpdatedAt = time.Now().UTC()
 	logger.LogIfDebug("Update:", i.UUID)
 	return db.Query(`
 		UPDATE items
@@ -102,7 +102,7 @@ func (i *Item) Delete() error {
 	i.Content = ""
 	i.EncItemKey = ""
 	i.AuthHash = ""
-	i.UpdatedAt = time.Now()
+	i.UpdatedAt = time.Now().UTC()
 	i.Deleted = true
 
 	return db.Query(`
@@ -116,7 +116,7 @@ func (i *Item) Delete() error {
 // Copy duplicates the Item, generates a new UUID and saves it to the DB.
 func (i Item) Copy() (Item, error) {
 	i.UUID = "" // the Create method should make another one.
-	i.UpdatedAt = time.Now()
+	i.UpdatedAt = time.Now().UTC()
 	err := i.Create()
 	if err != nil {
 		logger.LogIfDebug(err)
@@ -239,7 +239,7 @@ func (items *Items) Delete(uuid string) {
 func (items Items) ComputeHashDigest() string {
 	timestamps := make([]string, len(items))
 	for i, item := range items {
-		timestamps[i] = strconv.FormatInt(item.UpdatedAt.Unix(), 10)
+		timestamps[i] = fmtMilliseconds(item.UpdatedAt)
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(timestamps)))
 	input := strings.Join(timestamps, ",")
@@ -264,4 +264,11 @@ func (items Items) computeHashDigestAlt() string {
 	}
 	buf.Write([]byte(strconv.FormatInt(timestamps[i].Unix(), 10)))
 	return fmt.Sprintf("%x", sha256.Sum256(buf.Bytes()))
+}
+
+func fmtMilliseconds(t time.Time) string {
+	return strconv.FormatInt(
+		t.UnixNano()/int64(time.Millisecond),
+		10,
+	)
 }

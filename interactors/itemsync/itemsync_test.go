@@ -85,8 +85,8 @@ func TestDoItemSync(t *testing.T) {
 
 	// simulate item updates or staleness from client
 	itemToChange.Content = "bravo"
-	itemWithSyncConflict.UpdatedAt = time.Now().Add(time.Hour * -1)
-	itemWithSyncConflict.CreatedAt = time.Now().Add(time.Hour * -2)
+	itemWithSyncConflict.UpdatedAt = time.Now().UTC().Add(time.Hour * -1)
+	itemWithSyncConflict.CreatedAt = time.Now().UTC().Add(time.Hour * -2)
 	itemToMarkDeleted.Deleted = true
 	newItem := makeItem(t.Name()+"/new_item", user.UUID)
 	incomingItems := []models.Item{
@@ -201,8 +201,8 @@ func TestFindCheckItem(t *testing.T) {
 				t.Fatal(err)
 			}
 			incomingItem := makeItem(name, name+"user")
-			incomingItem.UpdatedAt = existingItem.UpdatedAt
-			incomingItem.CreatedAt = existingItem.CreatedAt
+			incomingItem.UpdatedAt = existingItem.UpdatedAt.UTC()
+			incomingItem.CreatedAt = existingItem.CreatedAt.UTC()
 
 			if item, err := findCheckItem(incomingItem); err != nil {
 				t.Errorf("did not expect error, got %v", err)
@@ -218,8 +218,8 @@ func TestFindCheckItem(t *testing.T) {
 				t.Fatal(err)
 			}
 			incomingItem := makeItem(name, name+"user")
-			incomingItem.UpdatedAt = existingItem.UpdatedAt.Add(time.Hour * -1)
-			incomingItem.CreatedAt = existingItem.CreatedAt.Add(time.Hour * -2)
+			incomingItem.UpdatedAt = existingItem.UpdatedAt.UTC().Add(time.Hour * -1)
+			incomingItem.CreatedAt = existingItem.CreatedAt.UTC().Add(time.Hour * -2)
 
 			item, err := findCheckItem(incomingItem)
 			if err != errSyncConflict {
@@ -237,8 +237,8 @@ func TestFindCheckItem(t *testing.T) {
 				t.Fatal(err)
 			}
 			incomingItem := makeItem(name, name+"user")
-			incomingItem.UpdatedAt = existingItem.UpdatedAt.Add(time.Hour * 1)
-			incomingItem.CreatedAt = existingItem.CreatedAt.Add(time.Hour * 2)
+			incomingItem.UpdatedAt = existingItem.UpdatedAt.UTC().Add(time.Hour * 1)
+			incomingItem.CreatedAt = existingItem.CreatedAt.UTC().Add(time.Hour * 2)
 
 			item, err := findCheckItem(incomingItem)
 			if err != errSyncConflict {

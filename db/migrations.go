@@ -52,7 +52,7 @@ func getMigrations() []m.Migration {
 					if email == "" || nonce == "" {
 						continue
 					}
-					if _, err := tx.Exec("UPDATE `users` SET `pw_salt`=?, `updated_at`=? WHERE `uuid`=?", encryption.Salt(email, nonce), time.Now(), u.GetUUID()); err != nil {
+					if _, err := tx.Exec("UPDATE `users` SET `pw_salt`=?, `updated_at`=? WHERE `uuid`=?", encryption.Salt(email, nonce), time.Now().UTC(), u.GetUUID()); err != nil {
 						log.Println(err)
 					}
 				}
