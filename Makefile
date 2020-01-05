@@ -14,7 +14,7 @@ install:
 
 docker-build:
 	mkdir -p $(BUILD_DIR)
-	cp --parents $(shell git ls-files) $(BUILD_DIR)
+	cp --parents $(shell git ls-files | grep -v _test.go) $(BUILD_DIR)
 	cd $(BUILD_DIR)
 	docker build -t $(IMG_NAME) .
 
