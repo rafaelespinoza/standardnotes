@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
-	"github.com/rafaelespinoza/standardfile/encryption"
+	"github.com/rafaelespinoza/standardnotes/encryption"
 )
 
 // A Token provides user authentication using a JWT.

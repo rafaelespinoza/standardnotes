@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rafaelespinoza/standardfile/logger"
-	"github.com/rafaelespinoza/standardfile/models"
+	"github.com/rafaelespinoza/standardnotes/logger"
+	"github.com/rafaelespinoza/standardnotes/models"
 )
 
 // Request is a collection of named parameters for an incoming sync request.

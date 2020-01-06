@@ -1,6 +1,10 @@
-# Standard File Server, Go Implementation
+# StandardNotes Sync Server, Go Implementation
 
-Golang implementation of the [Standard File](https://standardfile.org/) protocol.
+Golang implementation of the [Standard File](https://standardfile.org/) protocol
+and backend syncing API for standardnotes.
+
+This project started out as a fork of https://github.com/tectiv3/standardfile,
+but has since been heavily rewritten and rearchitected.
 
 ## Running your own server
 
@@ -24,20 +28,20 @@ this server with https://standardnotes.org/_
 Initialize project:
 
 ```
-go get github.com/rafaelespinoza/standardfile
-go install github.com/rafaelespinoza/standardfile
+go get github.com/rafaelespinoza/standardnotes
+go install github.com/rafaelespinoza/standardnotes
 ```
 
 Start the server:
 
 ```
-standardfile api
+standardnotes api
 ```
 
 Stop the server:
 
 ```
-standardfile api -stop
+standardnotes api -stop
 ```
 
 #### Docker instructions
@@ -57,7 +61,7 @@ data dir.
 Useful when running as systemd service.
 
 ```
-standardfile api
+standardnotes api
 ```
 
 This will not daemonise the service, which might be handy if you want to handle
@@ -68,12 +72,12 @@ To stop the service, kill the process or press `ctrl-C` if running in terminal.
 #### Run server as background daemon
 
 ```
-standardfile api -d
+standardnotes api -d
 ```
 
 ## Database migrations
 
-To perform migrations run `standardfile db -migrate`
+To perform migrations run `standardnotes db -migrate`
 
 ## Deploying to a live server
 

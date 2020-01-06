@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/rafaelespinoza/standardfile/models"
+	"github.com/rafaelespinoza/standardnotes/models"
 )
 
 const _MinConflictThreshold = 1 * time.Second

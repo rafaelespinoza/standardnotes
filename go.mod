@@ -1,4 +1,4 @@
-module github.com/rafaelespinoza/standardfile
+module github.com/rafaelespinoza/standardnotes
 
 go 1.12
 

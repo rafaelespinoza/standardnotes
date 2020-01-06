@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rafaelespinoza/standardfile/models"
+	"github.com/rafaelespinoza/standardnotes/models"
 )
 
 func TestEncodeToken(t *testing.T) {

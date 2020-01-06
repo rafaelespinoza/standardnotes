@@ -11,9 +11,9 @@ import (
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
-	"github.com/rafaelespinoza/standardfile/config"
-	"github.com/rafaelespinoza/standardfile/db"
-	"github.com/rafaelespinoza/standardfile/logger"
+	"github.com/rafaelespinoza/standardnotes/config"
+	"github.com/rafaelespinoza/standardnotes/db"
+	"github.com/rafaelespinoza/standardnotes/logger"
 	"github.com/rs/cors"
 )
 
@@ -28,7 +28,7 @@ func Serve(cfg config.Config) (err error) {
 	}
 
 	db.Init(cfg.DB)
-	log.Printf("started StandardFile Server\n\tconfig:\n\t%+v\n", cfg)
+	log.Printf("started StandardNotes Server\n\tconfig:\n\t%+v\n", cfg)
 
 	_Server, err := newServer(cfg)
 	if err != nil {

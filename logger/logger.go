@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/rafaelespinoza/standardfile/config"
+	"github.com/rafaelespinoza/standardnotes/config"
 )
 
 func init() {

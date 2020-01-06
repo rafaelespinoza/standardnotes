@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rafaelespinoza/standardfile/db"
-	"github.com/rafaelespinoza/standardfile/models"
+	"github.com/rafaelespinoza/standardnotes/db"
+	"github.com/rafaelespinoza/standardnotes/models"
 )
 
 const (
-	testDBName        = "standardfile_test"
-	baseTestOutputDir = "/tmp/standardfile_test"
+	testDBName        = "standardnotes_test"
+	baseTestOutputDir = "/tmp/standardnotes_test"
 )
 
 func TestMain(m *testing.M) {

@@ -5,8 +5,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/rafaelespinoza/standardfile/config"
-	"github.com/rafaelespinoza/standardfile/encryption"
+	"github.com/rafaelespinoza/standardnotes/config"
+	"github.com/rafaelespinoza/standardnotes/encryption"
 	m "github.com/remind101/migrate"
 )
 

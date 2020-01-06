@@ -11,8 +11,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/rafaelespinoza/standardfile/api"
-	"github.com/rafaelespinoza/standardfile/config"
+	"github.com/rafaelespinoza/standardnotes/api"
+	"github.com/rafaelespinoza/standardnotes/config"
 	"github.com/sevlyar/go-daemon"
 )
 
@@ -50,7 +50,7 @@ Description:
 
 	standardnotes backend API, golang implementation.
 
-	https://github.com/rafaelespinoza/standardfile
+	https://github.com/rafaelespinoza/standardnotes
 
 Commands:
 
@@ -60,7 +60,7 @@ Commands:
 		printFlagDefaults(flag.CommandLine)
 	}
 
-	flag.StringVar(&_Args.config, "config", "./config/standardfile.json", "config file location")
+	flag.StringVar(&_Args.config, "config", "./config/standardnotes.json", "config file location")
 	// The following flags can also be set with a config file, but are
 	// overridden with a CLI flag.
 	flag.StringVar(&_Args.db, "db", "sf.db", "path to database (sqlite3) file")

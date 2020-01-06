@@ -6,8 +6,8 @@ import (
 	"runtime"
 	"strconv"
 
-	"github.com/rafaelespinoza/standardfile/config"
-	"github.com/rafaelespinoza/standardfile/db"
+	"github.com/rafaelespinoza/standardnotes/config"
+	"github.com/rafaelespinoza/standardnotes/db"
 )
 
 // Commands associates a CLI input argument to a Command.

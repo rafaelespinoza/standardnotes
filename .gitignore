@@ -1,9 +1,11 @@
 standardfile
+standardnotes
 .DS_Store
 *.db
 pid
 log
 dist
 standardfile.exe
+standardnotes.exe
 vendor
 .vscode/launch.json

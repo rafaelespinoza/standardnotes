@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/rafaelespinoza/standardfile/db"
-	"github.com/rafaelespinoza/standardfile/logger"
+	"github.com/rafaelespinoza/standardnotes/db"
+	"github.com/rafaelespinoza/standardnotes/logger"
 )
 
 // An Item is any kind of StandardNotes item that belongs to a User.

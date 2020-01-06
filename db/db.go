@@ -7,7 +7,7 @@ import (
 	"reflect"
 
 	"github.com/kisielk/sqlstruct"
-	"github.com/rafaelespinoza/standardfile/errs"
+	"github.com/rafaelespinoza/standardnotes/errs"
 
 	// initialize driver
 	_ "github.com/mattn/go-sqlite3"
@@ -87,7 +87,7 @@ var err error
 //Init opens DB connection
 func Init(dbpath string) {
 	database.db, err = sql.Open("sqlite3", dbpath+"?loc=auto&parseTime=true")
-	// database.db, err = sql.Open("mysql", "Username:Password@tcp(Host:Port)/standardfile?parseTime=true")
+	// database.db, err = sql.Open("mysql", "Username:Password@tcp(Host:Port)/standardnotes?parseTime=true")
 
 	if err != nil {
 		log.Fatal(err)

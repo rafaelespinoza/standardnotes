@@ -3,8 +3,8 @@ package itemsync
 import (
 	"log"
 
-	"github.com/rafaelespinoza/standardfile/jobs"
-	"github.com/rafaelespinoza/standardfile/models"
+	"github.com/rafaelespinoza/standardnotes/jobs"
+	"github.com/rafaelespinoza/standardnotes/models"
 )
 
 func enqueueRealtimeExtensionJobs(user models.User, items models.Items) (err error) {

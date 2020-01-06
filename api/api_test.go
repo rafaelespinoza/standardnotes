@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rafaelespinoza/standardfile/api"
-	"github.com/rafaelespinoza/standardfile/config"
+	"github.com/rafaelespinoza/standardnotes/api"
+	"github.com/rafaelespinoza/standardnotes/config"
 )
 
 // defaultDB tells the test server where the db is. If using sqlite3, use

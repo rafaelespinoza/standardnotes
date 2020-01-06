@@ -1,8 +1,8 @@
 version: "3"
 services:
     stdfile:
-        image: rafaele/standardfile:latest
-        container_name: standardfile
+        image: rafaele/standardnotes:latest
+        container_name: standardnotes
         restart: always
         volumes:
             - .:/data/

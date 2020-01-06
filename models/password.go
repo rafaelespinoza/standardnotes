@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/rafaelespinoza/standardfile/encryption"
+	"github.com/rafaelespinoza/standardnotes/encryption"
 )
 
 const (
