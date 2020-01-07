@@ -89,14 +89,15 @@ func (r *Response) doItemSync(user models.User, req Request) (err error) {
 		limit = models.UserItemMaxPageSize
 	}
 
+	var moreUserItems bool
 	if req.CursorToken != "" {
 		date := decodePaginationToken(req.CursorToken)
-		retrieved, err = user.LoadItemsAfter(date, true, req.ContentType, limit)
+		retrieved, moreUserItems, err = user.LoadItemsAfter(date, true, req.ContentType, limit)
 	} else if req.SyncToken != "" {
 		date := decodePaginationToken(req.SyncToken)
-		retrieved, err = user.LoadItemsAfter(date, false, req.ContentType, limit)
+		retrieved, moreUserItems, err = user.LoadItemsAfter(date, false, req.ContentType, limit)
 	} else {
-		retrieved, err = user.LoadAllItems(req.ContentType, limit)
+		retrieved, moreUserItems, err = user.LoadAllItems(req.ContentType, limit)
 	}
 
 	if err != nil {
@@ -154,8 +155,11 @@ func (r *Response) doItemSync(user models.User, req Request) (err error) {
 	if conflicts == nil {
 		conflicts = make([]ItemConflict, 0)
 	}
-	if len(retrieved) >= limit { // could there be more rows?
-		// Should be greatest value. Depends on the ordering of DB results.
+
+	if moreUserItems {
+		// Tells the client where to begin the next round of item queries. It
+		// should be the greatest value in the last db query of existing user
+		// items. Which item that is depends on the ordering of DB results.
 		cursorTime := retrieved[len(retrieved)-1].UpdatedAt.UTC()
 		r.CursorToken = encodePaginationToken(cursorTime)
 	}
@@ -208,7 +212,7 @@ func findCheckItem(incomingItem models.Item) (item *models.Item, err error) {
 	var saveIncoming bool
 	theirsUpdated := incomingItem.UpdatedAt.UTC()
 	oursUpdated := item.UpdatedAt.UTC()
-	diff := theirsUpdated.Sub(oursUpdated) * time.Second
+	diff := theirsUpdated.Sub(oursUpdated)
 
 	if diff == 0 {
 		saveIncoming = true
@@ -258,7 +262,7 @@ func decodePaginationToken(token string) time.Time {
 		logger.LogIfDebug(err)
 		return time.Now().UTC()
 	}
-	return time.Unix(0, num)
+	return time.Unix(0, num).UTC()
 }
 
 type itemSyncError struct {

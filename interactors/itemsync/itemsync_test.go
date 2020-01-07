@@ -2,6 +2,7 @@ package itemsync
 
 import (
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -71,11 +72,11 @@ func TestDoItemSync(t *testing.T) {
 	itemToChange := makeItem(t.Name()+"/change", user.UUID)
 	itemWithSyncConflict := makeItem(t.Name()+"/sync_conflict", user.UUID)
 	itemToMarkDeleted := makeItem(t.Name()+"/deleted", user.UUID)
-	existingItems := []models.Item{
-		unchangedItem,
-		itemToChange,
-		itemWithSyncConflict,
-		itemToMarkDeleted,
+	existingItems := []*models.Item{
+		&unchangedItem,
+		&itemToChange,
+		&itemWithSyncConflict,
+		&itemToMarkDeleted,
 	}
 	for i, item := range existingItems {
 		if err := item.Save(); err != nil {
@@ -194,61 +195,67 @@ func TestFindCheckItem(t *testing.T) {
 	})
 
 	t.Run("item exists in DB", func(t *testing.T) {
-		t.Run("same timestamps", func(t *testing.T) {
-			name := t.Name()
+		type TestCase struct {
+			updatedOffset time.Duration
+			err           error
+		}
+		tests := []TestCase{
+			{
+				updatedOffset: time.Second * 0,
+				err:           nil,
+			},
+			{
+				updatedOffset: time.Second * 1,
+				err:           errSyncConflict,
+			},
+			{
+				updatedOffset: time.Second * -1,
+				err:           errSyncConflict,
+			},
+			{
+				updatedOffset: time.Millisecond * 999,
+				err:           nil,
+			},
+			{
+				updatedOffset: time.Millisecond * -999,
+				err:           nil,
+			},
+		}
+		for i, test := range tests {
+			name := t.Name() + strconv.Itoa(i)
 			existingItem := makeItem(name, name+"user")
 			if err := existingItem.Save(); err != nil {
 				t.Fatal(err)
 			}
 			incomingItem := makeItem(name, name+"user")
-			incomingItem.UpdatedAt = existingItem.UpdatedAt.UTC()
-			incomingItem.CreatedAt = existingItem.CreatedAt.UTC()
-
-			if item, err := findCheckItem(incomingItem); err != nil {
-				t.Errorf("did not expect error, got %v", err)
-			} else if ok := compareItems(t, item, &existingItem, true); !ok {
-				t.Errorf("actual did not equal expected")
-			}
-		})
-
-		t.Run("incoming item is stale", func(t *testing.T) {
-			name := t.Name()
-			existingItem := makeItem(name, name+"user")
-			if err := existingItem.Save(); err != nil {
-				t.Fatal(err)
-			}
-			incomingItem := makeItem(name, name+"user")
-			incomingItem.UpdatedAt = existingItem.UpdatedAt.UTC().Add(time.Hour * -1)
-			incomingItem.CreatedAt = existingItem.CreatedAt.UTC().Add(time.Hour * -2)
+			incomingItem.UpdatedAt = existingItem.UpdatedAt.UTC().Add(test.updatedOffset)
 
 			item, err := findCheckItem(incomingItem)
-			if err != errSyncConflict {
-				t.Errorf("unexpected error, expected %v got %v", errSyncConflict, err)
+			if err != test.err {
+				t.Errorf("test [%d]; unexpected error; got %v, expected %v", i, err, test.err)
 			}
 			if ok := compareItems(t, item, &existingItem, false); !ok {
-				t.Errorf("actual did not equal expected")
+				t.Errorf("test [%d]; actual did not equal expected", i)
 			}
-		})
-
-		t.Run("db item is stale", func(t *testing.T) {
-			name := t.Name()
-			existingItem := makeItem(name, name+"user")
-			if err := existingItem.Save(); err != nil {
-				t.Fatal(err)
-			}
-			incomingItem := makeItem(name, name+"user")
-			incomingItem.UpdatedAt = existingItem.UpdatedAt.UTC().Add(time.Hour * 1)
-			incomingItem.CreatedAt = existingItem.CreatedAt.UTC().Add(time.Hour * 2)
-
-			item, err := findCheckItem(incomingItem)
-			if err != errSyncConflict {
-				t.Errorf("unexpected error, expected %v got %v", errSyncConflict, err)
-			}
-			if ok := compareItems(t, item, &existingItem, false); !ok {
-				t.Errorf("actual did not equal expected")
-			}
-		})
+		}
 	})
+}
+
+func TestPaginationTokens(t *testing.T) {
+	now := time.Now().UTC()
+	ref := now.Add(time.Minute * -5)
+	encoded := encodePaginationToken(ref)
+	if encoded == "" {
+		t.Error("encoded token is empty")
+	}
+	decoded := decodePaginationToken(encoded)
+	if !decoded.Equal(ref) {
+		t.Errorf("decoded timestamp %v != %v", decoded, ref)
+	}
+	decodedZone, _ := decoded.Zone()
+	if decodedZone != "UTC" {
+		t.Errorf("decoded timestamp should be UTC")
+	}
 }
 
 func makeItem(uuid, userUUID string) models.Item {
