@@ -2,9 +2,7 @@ package db
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
-	"reflect"
 
 	"github.com/kisielk/sqlstruct"
 	"github.com/rafaelespinoza/standardnotes/errs"
@@ -84,7 +82,7 @@ func (db Database) createTables() {
 var database Database
 var err error
 
-//Init opens DB connection
+// Init opens DB connection
 func Init(dbpath string) {
 	database.db, err = sql.Open("sqlite3", dbpath+"?loc=auto&parseTime=true")
 	// database.db, err = sql.Open("mysql", "Username:Password@tcp(Host:Port)/standardnotes?parseTime=true")
@@ -98,7 +96,7 @@ func Init(dbpath string) {
 	database.createTables()
 }
 
-//Query db function
+// Query is used for inserting or updating db data.
 func Query(query string, args ...interface{}) error {
 	stmt := database.prepare(query)
 	defer stmt.Close()
@@ -112,12 +110,12 @@ func Query(query string, args ...interface{}) error {
 }
 
 // SelectExists queries for the first row and swallows an ErrNoRows error to
-// signal that there are no matching rows.
-func SelectExists(query string, args ...interface{}) (exists bool, err error) {
+// signal that there are no matching rows. The dest argument should be a pointer
+// to a value; the type pointed to by dest should match the query's column type.
+func SelectExists(dest interface{}, query string, args ...interface{}) (exists bool, err error) {
 	stmt := database.prepare(query)
 	defer stmt.Close()
-	var result string
-	err = stmt.QueryRow(args...).Scan(&result)
+	err = stmt.QueryRow(args...).Scan(dest)
 	if err == sql.ErrNoRows {
 		err = nil // consider a non-error, means the row does not exist.
 		return
@@ -131,7 +129,7 @@ func SelectExists(query string, args ...interface{}) (exists bool, err error) {
 // SelectStruct attempts to select one matching row and fill the result into
 // dest. The dest argument should be a pointer to some intended value. If there
 // are no rows, then it returns an ErrNoRows error.
-func SelectStruct(query string, dest interface{}, args ...interface{}) (err error) {
+func SelectStruct(dest interface{}, query string, args ...interface{}) (err error) {
 	var stmt *sql.Stmt
 	var rows *sql.Rows
 	var numRows int
@@ -168,47 +166,31 @@ func SelectStruct(query string, dest interface{}, args ...interface{}) (err erro
 	return
 }
 
-// Select selects multiple results from the DB.
-func Select(query string, out interface{}, args ...interface{}) (err error) {
-	stmt := database.prepare(query)
-	defer stmt.Close()
-
-	rows, err := stmt.Query(args...)
+// SelectMany returns multiple results from the DB.
+func SelectMany(onRow ScanRow, query string, args ...interface{}) (err error) {
+	rows, err := database.db.Query(query, args...)
+	if err == sql.ErrNoRows {
+		err = errNoRows{err}
+		return
+	} else if err != nil {
+		return
+	}
 	defer rows.Close()
-
-	results := indirect(reflect.ValueOf(out))
-	resultType := results.Type().Elem()
-	isPtr := false
-
-	if kind := results.Kind(); kind == reflect.Slice {
-		resultType := results.Type().Elem()
-		results.Set(reflect.MakeSlice(results.Type(), 0, 0))
-
-		if resultType.Kind() == reflect.Ptr {
-			isPtr = true
-			resultType = resultType.Elem()
-		}
-	} else if kind != reflect.Struct {
-		return fmt.Errorf("unsupported destination, should be slice or struct")
-	}
-
 	for rows.Next() {
-		var o = reflect.New(resultType)
-		err = sqlstruct.Scan(o.Interface(), rows)
-		if isPtr {
-			results.Set(reflect.Append(results, o.Elem().Addr()))
-		} else {
-			results.Set(reflect.Append(results, o.Elem()))
+		if err = onRow(rows); err != nil {
+			return
 		}
 	}
-	return err
+	return
 }
 
-func indirect(reflectValue reflect.Value) reflect.Value {
-	for reflectValue.Kind() == reflect.Ptr {
-		reflectValue = reflectValue.Elem()
-	}
-	return reflectValue
+// ScanRow is a callback to use when extracting column values from one row of a
+// DB query result into an application value.
+type ScanRow func(Iterator) error
+
+// Iterator is a query result, such as a sql.Rows.
+type Iterator interface {
+	Scan(attributes ...interface{}) error
 }
 
 type errNoRows struct {

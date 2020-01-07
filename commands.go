@@ -7,13 +7,11 @@ import (
 	"strconv"
 
 	"github.com/rafaelespinoza/standardnotes/config"
-	"github.com/rafaelespinoza/standardnotes/db"
 )
 
 // Commands associates a CLI input argument to a Command.
 var Commands = map[string]*Command{
 	"api":     &_APICommand,
-	"db":      &_DBCommand,
 	"version": &_VersionCommand,
 }
 
@@ -50,27 +48,6 @@ var (
 
 	Run and manager the api server. By default it runs in the foreground. Pass
 	the -d flag to run it as a background daemon. Pass -stop to shut it down.
-				`, _Bin, name)
-				printFlagDefaults(flags)
-			}
-			return flags
-		},
-	}
-
-	_DBCommand = Command{
-		description: "perform database tasks",
-		run: func(a *Args) error {
-			db.Migrate(config.Conf)
-			return nil
-		},
-		setup: func(a *Args) *flag.FlagSet {
-			const name = "db"
-			flags := flag.NewFlagSet(name, flag.ExitOnError)
-			flags.BoolVar(&a.migrate, "migrate", false, "perform DB migrations")
-			flags.Usage = func() {
-				fmt.Printf(`Usage: %s %s [-migrate]
-
-	Do database tasks. Pass -migrate to perform a migration.
 				`, _Bin, name)
 				printFlagDefaults(flags)
 			}

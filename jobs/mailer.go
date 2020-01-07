@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/rafaelespinoza/standardnotes/db"
 	"github.com/rafaelespinoza/standardnotes/models"
 )
 
@@ -14,7 +13,7 @@ type MailerJobParams struct {
 }
 
 func PerformMailerJob(params MailerJobParams) (err error) {
-	var user models.User
+	var user *models.User
 	var contents struct {
 		Items      models.Items
 		AuthParams models.PwGenParams
@@ -25,23 +24,14 @@ func PerformMailerJob(params MailerJobParams) (err error) {
 		Content  []byte
 	}
 
-	if err = db.Select(`
-		SELECT email
-		FROM 'users'
-		WHERE 'user_uuid'=?
-		LIMIT 1`,
-		&user,
-		params.UserID,
-	); err != nil {
+	if user, err = models.LoadUserByUUID(params.UserID); err != nil {
 		return
 	}
-	if err = db.Select(`
-		SELECT * FROM items
-		WHERE user_uuid = ? AND deleted IS NULL
-		ORDER BY 'updated_at' DESC`,
-		&contents.Items,
-	); err != nil {
+	if items, ierr := user.LoadActiveItems(); ierr != nil {
+		err = ierr
 		return
+	} else {
+		contents.Items = items
 	}
 	if data, perr := json.Marshal(contents); perr != nil {
 		err = perr
@@ -50,7 +40,7 @@ func PerformMailerJob(params MailerJobParams) (err error) {
 		attachment.Content = data
 	}
 
-	contents.AuthParams = models.MakePwGenParams(user)
+	contents.AuthParams = models.MakePwGenParams(*user)
 	attachment.Filename = fmt.Sprintf("SN-Data-%s.txt", time.Now().Format("20060102015405"))
 	attachment.MimeType = "application/json"
 	// TODO: send email to user with attached JSON file.

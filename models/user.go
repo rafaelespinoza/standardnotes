@@ -2,6 +2,7 @@ package models
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -38,12 +39,6 @@ func NewUser() *User {
 		UpdatedAt: time.Now().UTC(),
 	}
 }
-
-var _ db.MigratingUser = (*User)(nil)
-
-func (u *User) GetEmail() string   { return u.Email }
-func (u *User) GetPwNonce() string { return u.PwNonce }
-func (u *User) GetUUID() string    { return u.UUID }
 
 // LoadUserByUUID fetches a User from the DB.
 func LoadUserByUUID(uuid string) (user *User, err error) {
@@ -93,7 +88,7 @@ func (u *User) fetchHydrate(query string, args ...interface{}) (err error) {
 	if u == nil {
 		u = NewUser()
 	}
-	if err = db.SelectStruct(query, u, args...); err != nil {
+	if err = db.SelectStruct(u, query, args...); err != nil {
 		logger.LogIfDebug(err)
 		return
 	}
@@ -127,11 +122,12 @@ func (u *User) Create() (err error) {
 	u.Password = Hash(u.Password)
 	u.CreatedAt = time.Now().UTC()
 
-	err = db.Query(`
+	err = db.Query(
+		strings.TrimSpace(`
 		INSERT INTO users (
 			uuid, email, password, pw_func, pw_alg, pw_cost, pw_key_size,
 			pw_nonce, pw_salt, created_at, updated_at
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?)`),
 		u.UUID, u.Email, u.Password, u.PwFunc, u.PwAlg, u.PwCost, u.PwKeySize,
 		u.PwNonce, u.PwSalt, u.CreatedAt, u.UpdatedAt,
 	)
@@ -160,10 +156,12 @@ func (u *User) Update(updates User) (err error) {
 	u.PwSalt = updates.PwSalt
 	u.UpdatedAt = time.Now().UTC()
 
-	err = db.Query(`
+	err = db.Query(
+		strings.TrimSpace(`
 		UPDATE users
 		SET password=?, pw_alg=?, pw_cost=?, pw_func=?, pw_key_size=?, pw_nonce=?, pw_salt=?, updated_at=?
-		WHERE uuid=?`,
+		WHERE uuid=?`),
+
 		u.Password, u.PwAlg, u.PwCost, u.PwFunc, u.PwKeySize, u.PwNonce, u.PwSalt, u.UpdatedAt,
 		u.UUID,
 	)
@@ -183,7 +181,12 @@ func (u *User) Exists() (bool, error) {
 		// swallow this error, it doesn't answer the question asked by this method.
 		return false, nil
 	}
-	return db.SelectExists("SELECT uuid FROM users WHERE email=?", u.Email)
+	var id string
+	return db.SelectExists(
+		&id,
+		"SELECT uuid FROM users WHERE email=?",
+		u.Email,
+	)
 }
 
 // Validate checks the jwt for a valid password.
@@ -222,22 +225,18 @@ func (u *User) PwHashState() PwHash {
 }
 
 func (u *User) LoadActiveItems() (items Items, err error) {
-	err = db.Select(`
-		SELECT * FROM items
-		WHERE user_uuid=? AND content_type IS NOT '' AND deleted = ?
-		ORDER BY updated_at DESC`,
-		&items,
+	items, err = queryItems(
+		`SELECT * FROM items
+			WHERE user_uuid=? AND content_type IS NOT '' AND deleted = ?
+			ORDER BY updated_at DESC`,
 		u.UUID, false,
 	)
 	return
 }
 
 func (u *User) LoadActiveExtensionItems() (items Items, err error) {
-	err = db.Select(`
-		SELECT * FROM items
-		WHERE user_uuid=? AND content_type = ? AND deleted = ?
-		ORDER BY updated_at DESC`,
-		&items,
+	items, err = queryItems(
+		`SELECT * FROM items WHERE user_uuid=? AND content_type = ? AND deleted = ?  ORDER BY updated_at DESC`,
 		u.UUID, "SF|Extension", false,
 	)
 	return
@@ -249,38 +248,61 @@ const UserItemMaxPageSize = 1000
 // LoadItemsAfter fetches user items from the DB. If gte is true,  then it
 // performs a >= comparison on the updated at field. Otherwise, it does a >
 // comparison.
-func (u *User) LoadItemsAfter(date time.Time, gte bool, contentType string, limit int) (items Items, err error) {
+func (u *User) LoadItemsAfter(date time.Time, gte bool, contentType string, limit int) (items Items, more bool, err error) {
 	// TODO: add condition: `WHERE content_type = req.ContentType`
+	var found []Item
 	if gte {
-		err = db.Select(`
-			SELECT *
-			FROM items
-			WHERE user_uuid=? AND updated_at >= ?
-			ORDER BY updated_at ASC
-			LIMIT ?`,
-			&items, u.UUID, date, limit,
+		found, err = queryItems(
+			`SELECT * FROM items WHERE user_uuid=? AND updated_at >= ? ORDER BY updated_at ASC LIMIT ?`,
+			u.UUID, date, limit+1,
 		)
 	} else {
-		err = db.Select(`
-			SELECT *
-			FROM items
-			WHERE user_uuid=? AND updated_at > ?
-			ORDER BY updated_at ASC
-			LIMIT ?`,
-			&items, u.UUID, date, limit,
+		found, err = queryItems(
+			`SELECT * FROM items WHERE user_uuid=? AND updated_at > ?  ORDER BY updated_at ASC LIMIT ?`,
+			u.UUID, date, limit+1,
 		)
 
 	}
+
+	more = len(found) > limit
+	if more {
+		items = found[:limit]
+	} else {
+		items = found
+	}
+
 	return
 }
 
 // LoadAllItems fetches all the user's items up to limit. Typically, this is
 // used for initial item syncs.
-func (u *User) LoadAllItems(contentType string, limit int) (items Items, err error) {
+func (u *User) LoadAllItems(contentType string, limit int) (items Items, more bool, err error) {
+	var found Items
 	// TODO: add condition: `WHERE content_type = req.ContentType`
-	err = db.Select(
+	found, err = queryItems(
 		"SELECT * FROM items WHERE user_uuid=? AND deleted = ? ORDER BY updated_at ASC LIMIT ?",
-		&items, u.UUID, false, limit,
+		u.UUID, false, limit+1,
 	)
+
+	more = len(found) > limit
+	if more {
+		items = found[:limit]
+	} else {
+		items = found
+	}
+	return
+}
+
+func queryItems(query string, args ...interface{}) (items Items, err error) {
+	found := make([]Item, 0)
+	err = db.SelectMany(func(iterator db.Iterator) (e error) {
+		item := &Item{}
+		if e = item.detuplize(iterator); e != nil {
+			return
+		}
+		found = append(found, *item)
+		return
+	}, query, args...)
+	items = found
 	return
 }

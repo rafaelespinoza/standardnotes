@@ -36,8 +36,8 @@ func LoadItemByUUID(uuid string) (item *Item, err error) {
 	}
 	item = &Item{} // can't be nil to start out
 	err = db.SelectStruct(
-		`SELECT * FROM items WHERE uuid = ?`,
 		item,
+		`SELECT * FROM items WHERE uuid = ?`,
 		uuid,
 	)
 	if err != nil {
@@ -72,10 +72,11 @@ func (i *Item) Create() error {
 	i.CreatedAt = time.Now().UTC()
 	i.UpdatedAt = time.Now().UTC()
 	logger.LogIfDebug("Create:", i.UUID)
-	return db.Query(`
+	return db.Query(
+		strings.TrimSpace(`
 		INSERT INTO items (
 			uuid, user_uuid, content, content_type, enc_item_key, auth_hash, deleted, created_at, updated_at
-		) VALUES(?,?,?,?,?,?,?,?,?)`,
+		) VALUES(?,?,?,?,?,?,?,?,?)`),
 		i.UUID, i.UserUUID, i.Content, i.ContentType, i.EncItemKey, i.AuthHash, i.Deleted, i.CreatedAt, i.UpdatedAt,
 	)
 }
@@ -84,10 +85,12 @@ func (i *Item) Create() error {
 func (i *Item) Update() error {
 	i.UpdatedAt = time.Now().UTC()
 	logger.LogIfDebug("Update:", i.UUID)
-	return db.Query(`
+	return db.Query(
+		strings.TrimSpace(`
 		UPDATE items
 		SET content=?, content_type=?, enc_item_key=?, auth_hash=?, deleted=?, updated_at=?
 		WHERE uuid=? AND user_uuid=?`,
+		),
 		i.Content, i.ContentType, i.EncItemKey, i.AuthHash, i.Deleted, i.UpdatedAt,
 		i.UUID, i.UserUUID,
 	)
@@ -105,10 +108,12 @@ func (i *Item) Delete() error {
 	i.UpdatedAt = time.Now().UTC()
 	i.Deleted = true
 
-	return db.Query(`
-		UPDATE items
-		SET content='', enc_item_key='', auth_hash='', deleted=1, updated_at=?
-		WHERE uuid=? AND user_uuid=?`,
+	return db.Query(
+		strings.TrimSpace(`
+			UPDATE items
+			SET content='', enc_item_key='', auth_hash='', deleted=1, updated_at=?
+			WHERE uuid=? AND user_uuid=?`,
+		),
 		i.UpdatedAt, i.UUID, i.UserUUID,
 	)
 }
@@ -130,7 +135,12 @@ func (i *Item) Exists() (bool, error) {
 	if i.UUID == "" {
 		return false, nil
 	}
-	return db.SelectExists("SELECT uuid FROM items WHERE uuid=?", i.UUID)
+	var id string
+	return db.SelectExists(
+		&id,
+		"SELECT uuid FROM items WHERE uuid=?",
+		i.UUID,
+	)
 }
 
 // MergeProtected reconciles Item fields in preparation for sync updates while
@@ -183,6 +193,88 @@ func (i *Item) MarshalJSON() ([]byte, error) {
 		CreatedAt: i.CreatedAt.Format(itemTimestampFormat),
 		UpdatedAt: i.UpdatedAt.Format(itemTimestampFormat),
 	})
+}
+
+// detuplize is used for converting a db query result into an Item. It's a
+// little inflexible because it assumes that the columns are always in the same
+// order. At the moment, this works with a `SELECT *`; but it'd probably get in
+// the way if you needed to project differently or the schema changed.
+func (i *Item) detuplize(iterator db.Iterator) (err error) {
+	var uuid, userUUID, content, contentType, encItemKey, authHash string
+	var deleted bool
+	var createdAt, updatedAt time.Time
+	attrs := []interface{}{ // the ordering must match columns of db query result.
+		&uuid, &userUUID, &content, &contentType, &encItemKey, &authHash,
+		&deleted,
+		&createdAt, &updatedAt,
+	}
+	if err = iterator.Scan(attrs...); err != nil {
+		return
+	}
+	switch val := attrs[0].(type) {
+	case *string:
+		i.UUID = *val
+	default:
+		err = validationError{fmt.Errorf("wrong type for UUID; got %T, exp *string", val)}
+		return
+	}
+	switch val := attrs[1].(type) {
+	case *string:
+		i.UserUUID = *val
+	default:
+		err = validationError{fmt.Errorf("wrong type for UserUUID; got %T, exp *string", val)}
+		return
+	}
+	switch val := attrs[2].(type) {
+	case *string:
+		i.Content = *val
+	default:
+		err = validationError{fmt.Errorf("wrong type for Content; got %T, exp *string", val)}
+		return
+	}
+	switch val := attrs[3].(type) {
+	case *string:
+		i.ContentType = *val
+	default:
+		err = validationError{fmt.Errorf("wrong type for ContentType; got %T, exp *string", val)}
+		return
+	}
+	switch val := attrs[4].(type) {
+	case *string:
+		i.EncItemKey = *val
+	default:
+		err = validationError{fmt.Errorf("wrong type for EncItemKey; got %T, exp *string", val)}
+		return
+	}
+	switch val := attrs[5].(type) {
+	case *string:
+		i.AuthHash = *val
+	default:
+		err = validationError{fmt.Errorf("wrong type for AuthHash; got %T, exp *string", val)}
+		return
+	}
+	switch val := attrs[6].(type) {
+	case *bool:
+		i.Deleted = *val
+	default:
+		err = validationError{fmt.Errorf("wrong type for Deleted; got %T, exp *bool", val)}
+		return
+	}
+	switch val := attrs[7].(type) {
+	case *time.Time:
+		i.CreatedAt = *val
+	default:
+		err = validationError{fmt.Errorf("wrong type for CreatedAt; got %T, exp *time.Time", val)}
+		return
+	}
+	switch val := attrs[8].(type) {
+	case *time.Time:
+		i.UpdatedAt = *val
+	default:
+		err = validationError{fmt.Errorf("wrong type for UpdatedAt; got %T, exp *time.Time", val)}
+		return
+	}
+	return
 }
 
 type Frequency uint8
