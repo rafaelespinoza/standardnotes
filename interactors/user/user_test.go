@@ -189,21 +189,48 @@ func TestChangeUserPassword(t *testing.T) {
 		if err != nil {
 			t.Fatalf("did not expect error; got %v", err)
 		}
-		newPassword := models.NewPassword{
-			User:            *user,
+		oldNonce := user.PwNonce
+		newPassword := models.PwChangeParams{
+			API:             "20190520",
+			Identifier:      user.Email,
+			PwCost:          user.PwCost,
+			PwNonce:         user.PwNonce[1:],
 			CurrentPassword: user.PwHashState(),
 			NewPassword:     models.PwHash{Value: user.Password[1:]},
+			Version:         "20190520",
 		}
 
 		newToken, err := userInteractors.ChangeUserPassword(user, newPassword)
 		if err != nil {
 			t.Errorf("did not expect error; got %v", err)
 		}
-		if newToken == "" {
-			t.Error("expected an output token, got empty")
+		if user.PwNonce == oldNonce {
+			t.Error("pw nonce must be different from previous")
 		}
-		if newToken == oldToken {
-			t.Error("new token should not equal old token")
+
+		oldParts := strings.Split(oldToken, ".")
+		newParts := strings.Split(newToken, ".")
+		// Testing parts of the old token is not crucial, but it's low-hanging
+		// fruit. What's important is that some parts have changed correctly.
+		for i, parts := range [][]string{oldParts, newParts} {
+			if len(parts) != 3 {
+				t.Fatalf("parts [%d] length should be 3; got %d", i, len(parts))
+			}
+			for j, part := range parts {
+				if part == "" {
+					t.Fatalf("parts [%d][%d]; part should not be empty", i, j)
+				}
+			}
+		}
+
+		if newParts[0] != oldParts[0] {
+			t.Error("header part of token should not change")
+		}
+		if newParts[1] == oldParts[1] {
+			t.Error("payload part of token should be different")
+		}
+		if newParts[2] == oldParts[2] {
+			t.Error("signature part of token should be different")
 		}
 	})
 
@@ -217,7 +244,7 @@ func TestChangeUserPassword(t *testing.T) {
 				t.Fatalf("could not set up user; got %v", err)
 			}
 
-			newPassword := models.NewPassword{User: *user}
+			newPassword := models.PwChangeParams{}
 			token, err := userInteractors.ChangeUserPassword(user, newPassword)
 			if !testError(t, err, errExpectations{
 				messageFragment: "password",
@@ -238,8 +265,8 @@ func TestChangeUserPassword(t *testing.T) {
 				t.Fatalf("could not set up user; got %v", err)
 			}
 
-			newPassword := models.NewPassword{
-				User:            *user,
+			newPassword := models.PwChangeParams{
+				// User:            *user,
 				CurrentPassword: user.PwHashState(),
 			}
 			token, err := userInteractors.ChangeUserPassword(user, newPassword)
@@ -265,8 +292,8 @@ func TestChangeUserPassword(t *testing.T) {
 
 			currPW := user.PwHashState()
 			currPW.Value = user.Password[1:]
-			newPassword := models.NewPassword{
-				User:            *user,
+			newPassword := models.PwChangeParams{
+				// User:            *user,
 				CurrentPassword: currPW,
 			}
 			token, err := userInteractors.ChangeUserPassword(user, newPassword)
@@ -427,10 +454,14 @@ func TestAuthenticateUser(t *testing.T) {
 			// make a legit token stale by updating password
 			if _, err = userInteractors.ChangeUserPassword(
 				&knownUser,
-				models.NewPassword{
-					User:            knownUser,
+				models.PwChangeParams{
+					API:             "20190520",
+					Identifier:      knownUser.Email,
+					PwCost:          knownUser.PwCost,
+					PwNonce:         knownUser.PwNonce,
 					CurrentPassword: knownUser.PwHashState(),
 					NewPassword:     models.PwHash{Value: knownUser.Password[1:]},
+					Version:         "20190520",
 				},
 			); err != nil {
 				t.Fatal(err)

@@ -106,7 +106,7 @@ func handleSuccessfulAuthAttempt(u models.User) error {
 	return nil
 }
 
-func ChangeUserPassword(user *models.User, password models.NewPassword) (token string, err error) {
+func ChangeUserPassword(user *models.User, password models.PwChangeParams) (token string, err error) {
 	if len(password.CurrentPassword.Value) == 0 {
 		err = authenticationError{error: errNoPasswordProvidedDuringChange, validation: true}
 		return
@@ -115,7 +115,7 @@ func ChangeUserPassword(user *models.User, password models.NewPassword) (token s
 		return
 	}
 
-	if _, _, err = LoginUser(password.Email, &password.CurrentPassword); err != nil {
+	if _, _, err = LoginUser(user.Email, &password.CurrentPassword); err != nil {
 		if ierr := handleFailedAuthAttempt(*user); ierr != nil {
 			err = ierr
 		}
@@ -129,7 +129,7 @@ func ChangeUserPassword(user *models.User, password models.NewPassword) (token s
 	updates := user.MakeSaferCopy()
 	password.NewPassword.Hash()
 	updates.Password = password.NewPassword.Value
-	updates.PwNonce = user.PwNonce
+	updates.PwNonce = password.PwNonce
 	if err = user.Update(updates); err != nil {
 		return
 	}

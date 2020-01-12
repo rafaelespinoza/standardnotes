@@ -43,9 +43,7 @@ type PwGenParams struct {
 	Identifier string `json:"identifier"` // should be email address
 }
 
-// MakePwGenParams constructs authentication parameters from User fields. NOTE:
-// it's tempting to put this into the interactors package, but you can't because
-// you'd get an import cycle.
+// MakePwGenParams constructs authentication parameters from User fields.
 func MakePwGenParams(u User) PwGenParams {
 	var params PwGenParams
 
@@ -78,37 +76,53 @@ func MakePwGenParams(u User) PwGenParams {
 	return params
 }
 
-// NewPassword helps facilitate user password changes.
-type NewPassword struct {
-	User
+// PwChangeParams helps facilitate user password changes.
+type PwChangeParams struct {
 	CurrentPassword PwHash `json:"current_password"`
 	NewPassword     PwHash `json:"new_password"`
+	API             string `json:"api"`
+	Identifier      string `json:"identifier"`
+	PwCost          int    `json:"pw_cost"`
+	PwNonce         string `json:"pw_nonce"`
+	Version         string `json:"version"`
 }
 
-type newPasswordJSON struct {
-	User
-	CurrentPassword string `json:"current_password"`
-	NewPassword     string `json:"new_password"`
+type jsonPwChangeParams struct {
+	CurrPassword string `json:"current_password"`
+	NextPassword string `json:"new_password"`
+	API          string `json:"api"`
+	Identifier   string `json:"identifier"`
+	PwCost       int    `json:"pw_cost"`
+	PwNonce      string `json:"pw_nonce"`
+	Version      string `json:"version"`
 }
 
-func (np *NewPassword) UnmarshalJSON(in []byte) error {
-	var j newPasswordJSON
+func (np *PwChangeParams) UnmarshalJSON(in []byte) error {
+	var j jsonPwChangeParams
 	err := json.Unmarshal(in, &j)
 	if err != nil {
 		return err
 	}
-	np.User = j.User
-	np.CurrentPassword = PwHash{Value: j.CurrentPassword}
-	np.NewPassword = PwHash{Value: j.NewPassword}
+	np.CurrentPassword = PwHash{Value: j.CurrPassword}
+	np.NewPassword = PwHash{Value: j.NextPassword}
+	np.API = j.API
+	np.Identifier = j.Identifier
+	np.PwCost = j.PwCost
+	np.PwNonce = j.PwNonce
+	np.Version = j.Version
 	return nil
 }
 
-func (np NewPassword) MarshalJSON() ([]byte, error) {
+func (np PwChangeParams) MarshalJSON() ([]byte, error) {
 	return json.Marshal(
-		newPasswordJSON{
-			User:            np.User,
-			CurrentPassword: np.CurrentPassword.Value,
-			NewPassword:     np.NewPassword.Value,
+		jsonPwChangeParams{
+			CurrPassword: np.CurrentPassword.Value,
+			NextPassword: np.NewPassword.Value,
+			API:          np.API,
+			Identifier:   np.Identifier,
+			PwCost:       np.PwCost,
+			PwNonce:      np.PwNonce,
+			Version:      np.Version,
 		},
 	)
 }

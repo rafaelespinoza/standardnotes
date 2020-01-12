@@ -85,7 +85,7 @@ func changePassword(w http.ResponseWriter, r *http.Request) {
 		mustShowError(w, err, http.StatusUnauthorized)
 		return
 	}
-	var password models.NewPassword
+	var password models.PwChangeParams
 	if err := readJSONRequest(r, &password); err != nil {
 		mustShowError(w, err, http.StatusUnprocessableEntity)
 		return
