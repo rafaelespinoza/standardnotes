@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/rafaelespinoza/standardnotes/internal/db"
 	"github.com/rafaelespinoza/standardnotes/internal/errs"
 	userInteractors "github.com/rafaelespinoza/standardnotes/internal/interactors/user"
@@ -11,13 +12,13 @@ import (
 )
 
 func init() {
-	db.Init(":memory:")
+	db.Init()
 }
 
 func TestMakeAuthParams(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		user := models.NewUser()
-		user.Email = t.Name() + "@example.com"
+		user.Email = makeUUID() + "@example.com"
 		user.Password = "testpassword123"
 		user.PwNonce = "stub_password_nonce"
 		var err error
@@ -47,7 +48,7 @@ func TestMakeAuthParams(t *testing.T) {
 
 	t.Run("errors", func(t *testing.T) {
 		user := models.NewUser()
-		user.Email = t.Name() + "@example.com"
+		user.Email = makeUUID() + "@example.com"
 		user.Password = "testpassword123"
 		var err error
 		if err = user.Create(); err != nil {
@@ -67,9 +68,10 @@ func TestMakeAuthParams(t *testing.T) {
 }
 
 func TestRegisterUser(t *testing.T) {
+	email := makeUUID() + "@example.com"
 	user, tokenAfterRegistration, err := userInteractors.RegisterUser(
 		userInteractors.RegisterUserParams{
-			Email:    "user2@local",
+			Email:    email,
 			Password: "3cb5561daa49bd5b4438ad214a6f9a6d9b056a2c0b9a91991420ad9d658b8fac",
 		},
 	)
@@ -108,7 +110,7 @@ func TestLoginUser(t *testing.T) {
 	const plaintextPassword = "testpassword123"
 
 	t.Run("ok", func(t *testing.T) {
-		email := t.Name() + "@example.com"
+		email := makeUUID() + "@example.com"
 		user := models.NewUser()
 		user.Email = email
 		user.Password = plaintextPassword
@@ -132,7 +134,7 @@ func TestLoginUser(t *testing.T) {
 
 	t.Run("errors", func(t *testing.T) {
 		t.Run("wrong password", func(t *testing.T) {
-			email := t.Name() + "@example.com"
+			email := makeUUID() + "@example.com"
 			user := models.NewUser()
 			user.Email = email
 			user.Password = plaintextPassword
@@ -154,7 +156,7 @@ func TestLoginUser(t *testing.T) {
 		})
 
 		t.Run("unregistered user", func(t *testing.T) {
-			email := t.Name() + "@example.com"
+			email := makeUUID() + "@example.com"
 			user := models.NewUser()
 			user.Email = email
 			user.Password = plaintextPassword
@@ -181,7 +183,7 @@ func TestChangeUserPassword(t *testing.T) {
 
 		user, oldToken, err := userInteractors.RegisterUser(
 			userInteractors.RegisterUserParams{
-				Email:    t.Name() + "@example.com",
+				Email:    makeUUID() + "@example.com",
 				Password: "testpassword123",
 				PwNonce:  "stub_password_nonce",
 			},
@@ -237,7 +239,7 @@ func TestChangeUserPassword(t *testing.T) {
 	t.Run("errors", func(t *testing.T) {
 		t.Run("current password not provided", func(t *testing.T) {
 			user := models.NewUser()
-			user.Email = t.Name() + "@example.com"
+			user.Email = makeUUID() + "@example.com"
 			user.Password = "testpassword123"
 			user.PwNonce = "stub_password_nonce"
 			if err := user.Create(); err != nil {
@@ -259,7 +261,7 @@ func TestChangeUserPassword(t *testing.T) {
 
 		t.Run("no password nonce", func(t *testing.T) {
 			user := models.NewUser()
-			user.Email = t.Name() + "@example.com"
+			user.Email = makeUUID() + "@example.com"
 			user.Password = "testpassword123"
 			if err := user.Create(); err != nil {
 				t.Fatalf("could not set up user; got %v", err)
@@ -283,7 +285,7 @@ func TestChangeUserPassword(t *testing.T) {
 
 		t.Run("current password incorrect", func(t *testing.T) {
 			user := models.NewUser()
-			user.Email = t.Name() + "@example.com"
+			user.Email = makeUUID() + "@example.com"
 			user.Password = "testpassword123"
 			user.PwNonce = "stub_password_nonce"
 			if err := user.Create(); err != nil {
@@ -363,7 +365,7 @@ func TestAuthenticateUser(t *testing.T) {
 		var err error
 		var knownUser, authenticatedUser *models.User
 		knownUser = models.NewUser()
-		knownUser.Email = t.Name() + "@example.com"
+		knownUser.Email = makeUUID() + "@example.com"
 		knownUser.Password = "testpassword123"
 		knownUser.PwNonce = "stub_password_nonce"
 		if err = knownUser.Create(); err != nil {
@@ -439,7 +441,7 @@ func TestAuthenticateUser(t *testing.T) {
 			var tok string
 			var err error
 			knownUser := models.User{
-				Email:    t.Name() + "@example.com",
+				Email:    makeUUID() + "@example.com",
 				Password: "testpassword123",
 				PwNonce:  "stub_password_nonce",
 			}
@@ -479,3 +481,5 @@ func TestAuthenticateUser(t *testing.T) {
 		})
 	})
 }
+
+func makeUUID() string { return uuid.Must(uuid.New(), nil).String() }

@@ -210,8 +210,8 @@ func findCheckItem(incomingItem models.Item) (item *models.Item, err error) {
 	// it and decide if it's a conflict.
 
 	var saveIncoming bool
-	theirsUpdated := incomingItem.UpdatedAt.UTC()
-	oursUpdated := item.UpdatedAt.UTC()
+	theirsUpdated := incomingItem.UpdatedAt.UTC().Round(time.Millisecond)
+	oursUpdated := item.UpdatedAt.UTC().Round(time.Millisecond)
 	diff := theirsUpdated.Sub(oursUpdated)
 
 	if diff == 0 {

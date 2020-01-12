@@ -27,7 +27,7 @@ func Serve(cfg config.Config) (err error) {
 		return
 	}
 
-	db.Init(cfg.DB)
+	db.Init()
 	log.Printf("started StandardNotes Server\n\tconfig:\n\t%+v\n", cfg)
 
 	_Server, err := newServer(cfg)

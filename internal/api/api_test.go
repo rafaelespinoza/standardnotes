@@ -11,15 +11,10 @@ import (
 	"github.com/rafaelespinoza/standardnotes/internal/config"
 )
 
-// defaultDB tells the test server where the db is. If using sqlite3, use
-// ":memory:" if you don't want a file at all.
-const defaultDB = ":memory:"
-
 func TestServe(t *testing.T) {
 	t.Run("cors", func(t *testing.T) {
 		cfg := config.Config{
 			Debug:   true,
-			DB:      defaultDB,
 			Host:    "localhost",
 			Port:    7777,
 			UseCORS: true,

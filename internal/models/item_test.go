@@ -5,21 +5,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rafaelespinoza/standardnotes/internal/db"
 	"github.com/rafaelespinoza/standardnotes/internal/errs"
 	"github.com/rafaelespinoza/standardnotes/internal/models"
 )
 
 func init() {
-	db.Init(":memory:")
+	db.Init()
 }
-
-const stubbedUUID = "2d931510-d99f-494a-8c67-87feb05e1594"
 
 func TestLoadItemByUUID(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		saved := &models.Item{
-			UserUUID:    stubbedUUID,
+			UserUUID:    makeUUID(),
 			Content:     "alpha",
 			ContentType: "alpha",
 			EncItemKey:  "alpha",
@@ -27,7 +26,7 @@ func TestLoadItemByUUID(t *testing.T) {
 			Deleted:     false,
 		}
 		if err := saved.Save(); err != nil {
-			t.Fatalf("got expected error; %v", err)
+			t.Fatal(err)
 		}
 
 		loaded, err := models.LoadItemByUUID(saved.UUID)
@@ -46,7 +45,8 @@ func TestLoadItemByUUID(t *testing.T) {
 			t.Errorf("item should be nil")
 		}
 
-		if item, err := models.LoadItemByUUID(stubbedUUID); !errs.NotFoundError(err) {
+		wrongUUID := makeUUID()
+		if item, err := models.LoadItemByUUID(wrongUUID); !errs.NotFoundError(err) {
 			t.Errorf("unexpected error type; %#v", err)
 		} else if item != nil {
 			t.Errorf("item should be nil")
@@ -56,17 +56,18 @@ func TestLoadItemByUUID(t *testing.T) {
 
 func TestItemCreate(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
+		id := makeUUID()
 		tests := []models.Item{
 			{
-				UserUUID:    "2" + stubbedUUID[1:],
+				UserUUID:    "a" + id[1:],
 				Content:     "alpha",
 				ContentType: "alpha",
 				EncItemKey:  "alpha",
 				AuthHash:    "alpha",
 			},
 			{
-				UUID:        "1" + stubbedUUID[1:],
-				UserUUID:    "2" + stubbedUUID[1:],
+				UUID:        "a" + id[1:],
+				UserUUID:    "b" + id[1:],
 				Content:     "alpha",
 				ContentType: "alpha",
 				EncItemKey:  "alpha",
@@ -76,7 +77,7 @@ func TestItemCreate(t *testing.T) {
 
 		for i, item := range tests {
 			if err := item.Create(); err != nil {
-				t.Error(err)
+				t.Errorf("test [%d]; %v", i, err)
 			}
 			if item.UUID == "" {
 				t.Errorf("test [%d]; uuid should not be empty", i)
@@ -129,7 +130,7 @@ func TestItemCreate(t *testing.T) {
 
 func TestItemUpdate(t *testing.T) {
 	item := &models.Item{
-		UserUUID:    stubbedUUID,
+		UserUUID:    makeUUID(),
 		Content:     "alpha",
 		ContentType: "alpha",
 		EncItemKey:  "alpha",
@@ -174,7 +175,7 @@ func TestItemUpdate(t *testing.T) {
 func TestItemDelete(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		item := &models.Item{
-			UserUUID:    stubbedUUID,
+			UserUUID:    makeUUID(),
 			Content:     "alpha",
 			ContentType: "alpha",
 			EncItemKey:  "alpha",
@@ -248,7 +249,7 @@ func TestItemDelete(t *testing.T) {
 
 func TestItemCopy(t *testing.T) {
 	item := &models.Item{
-		UserUUID:    stubbedUUID,
+		UserUUID:    makeUUID(),
 		Content:     "alpha",
 		ContentType: "alpha",
 		EncItemKey:  "alpha",
@@ -629,13 +630,30 @@ func compareItems(t *testing.T, a, b *models.Item, checkTimestamps bool) (ok boo
 		t.Errorf("Deleted different; a: %t, b: %t", a.Deleted, b.Deleted)
 		ok = false
 	}
-	if checkTimestamps && !a.CreatedAt.Equal(b.CreatedAt) {
+	if checkTimestamps && !compareTimes(a.CreatedAt, b.CreatedAt) {
 		t.Errorf("CreatedAt different;\na: %v\nb: %v", a.CreatedAt, b.CreatedAt)
 		ok = false
 	}
-	if checkTimestamps && !a.UpdatedAt.Equal(b.UpdatedAt) {
+	if checkTimestamps && !compareTimes(a.UpdatedAt, b.UpdatedAt) {
 		t.Errorf("UpdatedAt different;\na: %v\nb: %v", a.UpdatedAt, b.UpdatedAt)
 		ok = false
 	}
 	return
+}
+
+func makeUUID() string { return uuid.Must(uuid.New(), nil).String() }
+
+const timesCloseEnoughThreshold = time.Microsecond
+
+func compareTimes(a time.Time, b time.Time) bool {
+	if a.Equal(b) {
+		return true
+	}
+	if a.Before(b) && a.Add(timesCloseEnoughThreshold).Before(b) {
+		return false
+	}
+	if b.Before(a) && b.Add(timesCloseEnoughThreshold).Before(a) {
+		return false
+	}
+	return true
 }

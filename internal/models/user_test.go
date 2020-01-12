@@ -11,7 +11,7 @@ import (
 )
 
 func init() {
-	db.Init(":memory:")
+	db.Init()
 }
 
 func TestLoadUser(t *testing.T) {
@@ -19,7 +19,8 @@ func TestLoadUser(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		saved := models.NewUser()
-		saved.Email = t.Name() + "@example.com"
+
+		saved.Email = makeUUID() + "@example.com"
 		saved.Password = "testpassword123"
 		saved.PwNonce = "stub_password_nonce"
 		if err := saved.Create(); err != nil {
@@ -108,7 +109,7 @@ func TestLoadUser(t *testing.T) {
 func TestUserExists(t *testing.T) {
 	t.Run("true", func(t *testing.T) {
 		user := models.NewUser()
-		user.Email = t.Name() + "@example.com"
+		user.Email = t.Name() + "_" + makeUUID() + "@example.com"
 		user.Password = "testpassword123"
 		user.PwNonce = "stub_password_nonce"
 		if err := user.Create(); err != nil {
@@ -203,7 +204,7 @@ func TestUserCreate(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		user := models.NewUser()
-		user.Email = t.Name() + "@example.com"
+		user.Email = t.Name() + "_" + makeUUID() + "@example.com"
 		user.Password = plaintextPassword
 		if err := user.Create(); err != nil {
 			t.Error(err)
@@ -231,8 +232,8 @@ func TestUserCreate(t *testing.T) {
 			// UUID must be empty
 			{
 				&models.User{
-					UUID:     stubbedUUID,
-					Email:    t.Name() + "uuid" + "@example.com",
+					UUID:     makeUUID(),
+					Email:    makeUUID() + "@example.com",
 					Password: "testpassword123",
 				},
 			},
@@ -257,7 +258,7 @@ func TestUserCreate(t *testing.T) {
 		}
 
 		t.Run("already registered", func(t *testing.T) {
-			email := t.Name() + "@example.com"
+			email := makeUUID() + "@example.com"
 			existingUser := models.NewUser()
 			existingUser.Email = email
 			existingUser.Password = plaintextPassword
@@ -289,7 +290,7 @@ func TestUserCreate(t *testing.T) {
 
 func TestUserLoadActiveItems(t *testing.T) {
 	user := models.NewUser()
-	user.Email = t.Name() + "@example.com"
+	user.Email = makeUUID() + "@example.com"
 	user.Password = "testpassword123"
 	user.PwNonce = "stub_password_nonce"
 	var err error
@@ -371,11 +372,11 @@ func compareUsers(t *testing.T, a, b *models.User, checkTimestamps bool) (ok boo
 		t.Errorf("PwSalt different; a: %q, b: %q", a.PwSalt, b.PwSalt)
 		ok = false
 	}
-	if checkTimestamps && !a.CreatedAt.Equal(b.CreatedAt) {
+	if checkTimestamps && !compareTimes(a.CreatedAt, b.CreatedAt) {
 		t.Errorf("CreatedAt different;\na: %v\nb: %v", a.CreatedAt, b.CreatedAt)
 		ok = false
 	}
-	if checkTimestamps && !a.UpdatedAt.Equal(b.UpdatedAt) {
+	if checkTimestamps && !compareTimes(a.UpdatedAt, b.UpdatedAt) {
 		t.Errorf("UpdatedAt different;\na: %v\nb: %v", a.UpdatedAt, b.UpdatedAt)
 		ok = false
 	}

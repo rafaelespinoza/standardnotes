@@ -227,7 +227,7 @@ func (u *User) PwHashState() PwHash {
 func (u *User) LoadActiveItems() (items Items, err error) {
 	items, err = queryItems(
 		`SELECT * FROM items
-			WHERE user_uuid=? AND content_type IS NOT '' AND deleted = ?
+			WHERE user_uuid=? AND content_type <> '' AND deleted = ?
 			ORDER BY updated_at DESC`,
 		u.UUID, false,
 	)

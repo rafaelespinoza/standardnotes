@@ -23,7 +23,6 @@ type Args struct {
 	stop   bool
 
 	daemon  bool
-	db      string
 	debug   bool
 	host    string
 	migrate bool
@@ -63,7 +62,6 @@ Commands:
 	flag.StringVar(&_Args.config, "config", "./internal/config/standardnotes.json", "config file location")
 	// The following flags can also be set with a config file, but are
 	// overridden with a CLI flag.
-	flag.StringVar(&_Args.db, "db", "sf.db", "path to database (sqlite3) file")
 	flag.BoolVar(&_Args.debug, "debug", false, "run server in debug mode")
 	flag.StringVar(&_Args.host, "host", "localhost", "server hostname")
 	flag.BoolVar(&_Args.noReg, "noreg", false, "disable user registration")
@@ -107,11 +105,6 @@ func initCommand(positionalArgs []string, a *Args) (cmd *Command, err error) {
 	}
 	if a.debug {
 		config.Conf.Debug = true
-	}
-	if a.db != "" {
-		config.Conf.DB = a.db
-	} else if config.Conf.DB == "" {
-		config.Conf.DB = "sf.db"
 	}
 	if a.noReg {
 		config.Conf.NoReg = true

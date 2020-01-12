@@ -2,46 +2,16 @@ package db
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
+	"os"
 
 	"github.com/kisielk/sqlstruct"
 	"github.com/rafaelespinoza/standardnotes/internal/errs"
 
 	// initialize driver
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/go-sql-driver/mysql"
 )
-
-const schema string = `
-PRAGMA foreign_keys=OFF;
-BEGIN TRANSACTION;
-CREATE TABLE IF NOT EXISTS "items" (
-    "uuid" varchar(36) primary key NULL,
-    "user_uuid" varchar(36) NOT NULL,
-    "content" blob NOT NULL,
-    "content_type" varchar(255) NOT NULL,
-    "enc_item_key" varchar(255) NOT NULL,
-    "auth_hash" varchar(255) NOT NULL,
-    "deleted" integer(1) NOT NULL DEFAULT 0,
-    "created_at" timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    "updated_at" timestamp DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS "users" (
-    "uuid" varchar(36) primary key NULL,
-    "email" varchar(255) NOT NULL,
-    "password" varchar(255) NOT NULL,
-    "pw_func" varchar(255) NOT NULL DEFAULT "pbkdf2",
-    "pw_alg" varchar(255) NOT NULL DEFAULT "sha512",
-    "pw_cost" integer NOT NULL DEFAULT 5000,
-    "pw_key_size" integer NOT NULL DEFAULT 512,
-    "pw_nonce" varchar(255) NOT NULL,
-    "pw_salt" varchar(255) NOT NULL,
-    "created_at" timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    "updated_at" timestamp DEFAULT CURRENT_TIMESTAMP);
-CREATE INDEX IF NOT EXISTS user_uuid ON items (user_uuid);
-CREATE INDEX IF NOT EXISTS user_content on items (user_uuid, content_type);
-CREATE INDEX IF NOT EXISTS updated_at on items (updated_at);
-CREATE INDEX IF NOT EXISTS email on users (email);
-COMMIT;
-`
 
 //Database encapsulates database
 type Database struct {
@@ -71,21 +41,33 @@ func (db Database) prepare(q string) (stmt *sql.Stmt) {
 	return stmt
 }
 
-func (db Database) createTables() {
-	// create table if not exists
-	_, err = db.db.Exec(schema)
-	if err != nil {
-		panic(err)
+type dbConnParameters struct{ host, name, pass, port, user string }
+
+var (
+	database     Database
+	dbConnParams *dbConnParameters
+)
+
+func init() {
+	dbConnParams = &dbConnParameters{
+		host: os.Getenv("DB_HOST"),
+		name: os.Getenv("DB_NAME"),
+		pass: os.Getenv("DB_PASSWORD"),
+		port: os.Getenv("DB_PORT"),
+		user: os.Getenv("DB_USER"),
 	}
 }
 
-var database Database
-var err error
-
 // Init opens DB connection
-func Init(dbpath string) {
-	database.db, err = sql.Open("sqlite3", dbpath+"?loc=auto&parseTime=true")
-	// database.db, err = sql.Open("mysql", "Username:Password@tcp(Host:Port)/standardnotes?parseTime=true")
+func Init() {
+	var err error
+	database.db, err = sql.Open(
+		"mysql",
+		fmt.Sprintf(
+			"%s:%s@tcp(%s:%s)/%s?parseTime=true",
+			dbConnParams.user, dbConnParams.pass, dbConnParams.host, dbConnParams.port, dbConnParams.name,
+		),
+	)
 
 	if err != nil {
 		log.Fatal(err)
@@ -93,7 +75,6 @@ func Init(dbpath string) {
 	if database.db == nil {
 		log.Fatal("db nil")
 	}
-	database.createTables()
 }
 
 // Query is used for inserting or updating db data.
