@@ -2,11 +2,21 @@ package models
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
-	"github.com/rafaelespinoza/standardnotes/encryption"
 )
+
+var _SigningKey = []byte{}
+
+func init() {
+	key := os.Getenv("SECRET_KEY_BASE")
+	if key == "" {
+		key = "qA6irmDikU6RkCM4V0cJiUJEROuCsqTa1esexI4aWedSv405v8lw4g1KB1nQVsSdCrcyRlKFdws4XPlsArWwv9y5Xr5Jtkb11w1NxKZabOUa7mxjeENuCs31Y1Ce49XH9kGMPe0ms7iV7e9F6WgnsPFGOlIA3CwfGyr12okas2EsDd71SbSnA0zJYjyxeCVCZJWISmLB"
+	}
+	_SigningKey = []byte(key)
+}
 
 // A Token provides user authentication using a JWT.
 type Token interface {
@@ -58,7 +68,7 @@ func EncodeToken(u User) (string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signedToken, err := token.SignedString(encryption.SigningKey)
+	signedToken, err := token.SignedString(_SigningKey)
 	if err != nil {
 		return "", err
 	}
@@ -79,7 +89,7 @@ func DecodeToken(encodedToken string) (tok Token, err error) {
 					token.Header["alg"],
 				)
 			}
-			return encryption.SigningKey, nil
+			return _SigningKey, nil
 		},
 	)
 	if err != nil {

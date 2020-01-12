@@ -1,12 +1,11 @@
 package models
 
 import (
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	"github.com/rafaelespinoza/standardnotes/encryption"
 )
 
 const (
@@ -65,7 +64,12 @@ func MakePwGenParams(u User) PwGenParams {
 		if nonce == "" {
 			nonce = "a04a8fe6bcb19ba61c5c0873d391e987982fbbd4"
 		}
-		u.PwSalt = encryption.Salt(u.Email, nonce)
+		u.PwSalt = strings.Replace(
+			fmt.Sprintf("% x", sha1.Sum([]byte(u.Email+"SN"+nonce))),
+			" ",
+			"",
+			-1,
+		)
 	}
 	if u.PwNonce != "" { // v3 only
 		params.PwNonce = u.PwNonce
