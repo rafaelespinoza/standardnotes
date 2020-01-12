@@ -74,7 +74,6 @@ var (
         Run in Foreground: ` + strconv.FormatBool(a.daemon) + `
         Webserver Port:    ` + strconv.Itoa(conf.Port) + `
         Socket:            ` + socket + `
-        DB Path:           ` + conf.DB + `
         Debug:             ` + strconv.FormatBool(conf.Debug))
 
 			return nil

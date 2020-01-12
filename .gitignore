@@ -9,3 +9,7 @@ standardfile.exe
 standardnotes.exe
 vendor
 .vscode/launch.json
+.env*
+
+# db migration tool, build instructions in Makefile
+godfish

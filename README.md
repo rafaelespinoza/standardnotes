@@ -13,7 +13,7 @@ sync server and use it with a Standard Notes client. This allows you to have
 #### Requirements
 
 - Go 1.12+
-- SQLite3 database
+- MariaDB v10.4
 
 #### Initialize project
 

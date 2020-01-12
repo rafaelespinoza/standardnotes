@@ -1,0 +1,39 @@
+version: "3"
+services:
+    api:
+        image: rafaele/standardnotes:latest
+        container_name: standardnotes
+        entrypoint: /app/standardnotes -config /app/standardnotes.json api
+        env_file:
+            - .env
+        environment:
+            CONTAINER_PORT: "${CONTAINER_PORT}"
+            DB_HOST: db
+            DB_PORT: "${DB_PORT}"
+            HOST_PORT: "${HOST_PORT}"
+            SECRET_KEY_BASE: "${SECRET_KEY_BASE}"
+        healthcheck:
+            interval: 5m
+            timeout: 5s
+            retries: 3
+            test: ["CMD", "curl", "-f", "localhost:${CONTAINER_PORT}"]
+        ports:
+            - "${HOST_PORT}:${CONTAINER_PORT}"
+        restart: unless-stopped
+    db:
+        image: mariadb:10.4
+        container_name: standardnotes_db
+        env_file:
+            - .env
+        environment:
+            MYSQL_DATABASE: "${DB_NAME}"
+            MYSQL_USER: "${DB_USER}"
+            MYSQL_PASSWORD: "${DB_PASSWORD}"
+            MYSQL_ROOT_PASSWORD: "${DB_ROOT_PASSWORD}"
+        expose:
+            - "${DB_PORT}"
+        restart: unless-stopped
+        volumes:
+            - standardnotes_db:/var/lib/mysql
+volumes:
+    standardnotes_db:

@@ -1,7 +1,6 @@
 package config
 
 type Config struct {
-	DB      string `json:"db"`
 	Debug   bool   `json:"debug"`
 	Host    string `json:"host"`
 	NoReg   bool   `json:"noreg"`
@@ -11,7 +10,6 @@ type Config struct {
 }
 
 var Conf = Config{
-	DB:      "sf.db",
 	Debug:   false,
 	NoReg:   false,
 	Port:    8888,

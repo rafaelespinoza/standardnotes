@@ -1,11 +1,10 @@
 package itemsync
 
 import (
-	"os"
-	"strconv"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rafaelespinoza/standardnotes/internal/db"
 	"github.com/rafaelespinoza/standardnotes/internal/models"
 )
@@ -15,29 +14,26 @@ const (
 	baseTestOutputDir = "/tmp/standardnotes_test"
 )
 
-func TestMain(m *testing.M) {
-	os.MkdirAll(baseTestOutputDir, 0755)
-	m.Run()
-	os.RemoveAll(baseTestOutputDir)
-}
-
 func TestSyncUserItems(t *testing.T) {
-	db.Init(":memory:")
+	db.Init()
 
-	user := models.User{UUID: t.Name() + time.Now().Format(time.RFC3339Nano)}
+	user, err := createUser()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	existingItems := []models.Item{
-		makeItem(t.Name()+"/alpha", user.UUID),
-		makeItem(t.Name()+"/bravo", user.UUID),
-		makeItem(t.Name()+"/charlie", user.UUID),
-		makeItem(t.Name()+"/delta", user.UUID),
+		makeItem(user.UUID),
+		makeItem(user.UUID),
+		makeItem(user.UUID),
+		makeItem(user.UUID),
 	}
 	for i, item := range existingItems {
 		if err := item.Save(); err != nil {
 			t.Fatalf("could not save existingItems[%d] during setup; %v", i, err)
 		}
 	}
-	res, err := SyncUserItems(user, Request{ComputeIntegrity: true})
+	res, err := SyncUserItems(*user, Request{ComputeIntegrity: true})
 	if err != nil {
 		t.Error(err)
 		return
@@ -59,19 +55,14 @@ func TestDoItemSync(t *testing.T) {
 	// token is there. The queries are not fully-developed anyways (ignores
 	// content type and limit inputs), so just test with all user items for now.
 
-	pathToTestDir := baseTestOutputDir + "/" + t.Name()
-	if err := os.MkdirAll(pathToTestDir, 0755); err != nil {
-		t.Fatalf("error creating test directory %s", pathToTestDir)
+	user, err := createUser()
+	if err != nil {
+		t.Fatal(err)
 	}
-	defer os.RemoveAll(pathToTestDir)
-	// debugging is easier when the DB is not in-memory.
-	db.Init(pathToTestDir + "/" + testDBName)
-
-	user := models.User{UUID: t.Name() + time.Now().Format(time.RFC3339Nano)}
-	unchangedItem := makeItem(t.Name()+"/unchanged", user.UUID)
-	itemToChange := makeItem(t.Name()+"/change", user.UUID)
-	itemWithSyncConflict := makeItem(t.Name()+"/sync_conflict", user.UUID)
-	itemToMarkDeleted := makeItem(t.Name()+"/deleted", user.UUID)
+	unchangedItem := makeItem(user.UUID)
+	itemToChange := makeItem(user.UUID)
+	itemWithSyncConflict := makeItem(user.UUID)
+	itemToMarkDeleted := makeItem(user.UUID)
 	existingItems := []*models.Item{
 		&unchangedItem,
 		&itemToChange,
@@ -89,7 +80,7 @@ func TestDoItemSync(t *testing.T) {
 	itemWithSyncConflict.UpdatedAt = time.Now().UTC().Add(time.Hour * -1)
 	itemWithSyncConflict.CreatedAt = time.Now().UTC().Add(time.Hour * -2)
 	itemToMarkDeleted.Deleted = true
-	newItem := makeItem(t.Name()+"/new_item", user.UUID)
+	newItem := makeItem(user.UUID)
 	incomingItems := []models.Item{
 		itemToChange,
 		itemWithSyncConflict,
@@ -97,7 +88,7 @@ func TestDoItemSync(t *testing.T) {
 		newItem,
 	}
 	res := &Response{}
-	if err := res.doItemSync(user, Request{Items: incomingItems}); err != nil {
+	if err := res.doItemSync(*user, Request{Items: incomingItems}); err != nil {
 		t.Errorf("did not expect error; got %v", err)
 	}
 
@@ -143,8 +134,6 @@ func TestDoItemSync(t *testing.T) {
 		}
 	}
 
-	var err error
-
 	// test Update behavior
 	var updatedItemToChange *models.Item
 	if updatedItemToChange, err = models.LoadItemByUUID(itemToChange.UUID); err != nil {
@@ -177,16 +166,8 @@ func TestDoItemSync(t *testing.T) {
 }
 
 func TestFindCheckItem(t *testing.T) {
-	pathToTestDir := baseTestOutputDir + "/" + t.Name()
-	if err := os.MkdirAll(pathToTestDir, 0755); err != nil {
-		t.Fatalf("error creating test directory %s", pathToTestDir)
-	}
-	defer os.RemoveAll(pathToTestDir)
-	// debugging is easier when the DB is not in-memory.
-	db.Init(pathToTestDir + "/" + testDBName)
-
 	t.Run("item does not exist in DB", func(t *testing.T) {
-		incomingItem := makeItem("alpha", "alpha")
+		incomingItem := makeItem("alpha")
 		if item, err := findCheckItem(incomingItem); err != nil {
 			t.Errorf("did not expect error, got %v", err)
 		} else if *item != incomingItem {
@@ -195,6 +176,10 @@ func TestFindCheckItem(t *testing.T) {
 	})
 
 	t.Run("item exists in DB", func(t *testing.T) {
+		user, err := createUser()
+		if err != nil {
+			t.Fatal(err)
+		}
 		type TestCase struct {
 			updatedOffset time.Duration
 			err           error
@@ -222,12 +207,12 @@ func TestFindCheckItem(t *testing.T) {
 			},
 		}
 		for i, test := range tests {
-			name := t.Name() + strconv.Itoa(i)
-			existingItem := makeItem(name, name+"user")
+			existingItem := makeItem(user.UUID)
 			if err := existingItem.Save(); err != nil {
 				t.Fatal(err)
 			}
-			incomingItem := makeItem(name, name+"user")
+			incomingItem := makeItem(user.UUID)
+			incomingItem.UUID = existingItem.UUID
 			incomingItem.UpdatedAt = existingItem.UpdatedAt.UTC().Add(test.updatedOffset)
 
 			item, err := findCheckItem(incomingItem)
@@ -258,9 +243,9 @@ func TestPaginationTokens(t *testing.T) {
 	}
 }
 
-func makeItem(uuid, userUUID string) models.Item {
+func makeItem(userUUID string) models.Item {
 	return models.Item{
-		UUID:        uuid,
+		UUID:        makeUUID(),
 		UserUUID:    userUUID,
 		Content:     "alpha",
 		ContentType: "alpha",
@@ -334,4 +319,17 @@ func member(items []string, val string) (ok bool) {
 		}
 	}
 	return
+}
+
+func makeUUID() string { return uuid.Must(uuid.New(), nil).String() }
+
+func createUser() (*models.User, error) {
+	user := models.NewUser()
+	user.Email = makeUUID() + "@example.com"
+	user.Password = "testpassword123"
+	err := user.Create()
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
 }
