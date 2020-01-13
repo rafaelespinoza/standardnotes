@@ -103,46 +103,37 @@ func TestItemConflict(t *testing.T) {
 func itemFromJSON(in map[string]interface{}) (out models.Item, err error) {
 	var ok bool
 	if out.UUID, ok = in["uuid"].(string); !ok {
-		err = fmt.Errorf("expected %q to be string", "uuid")
-		return
+		// no op
 	}
 	if out.UserUUID, ok = in["user_uuid"].(string); !ok {
-		err = fmt.Errorf("expected %q to be string", "user_uuid")
-		return
+		// no op
 	}
 	if out.Content, ok = in["content"].(string); !ok {
-		err = fmt.Errorf("expected %q to be string", "content")
-		return
+		// no op
 	}
 	if out.ContentType, ok = in["content_type"].(string); !ok {
-		err = fmt.Errorf("expected %q to be string", "content_type")
-		return
+		// no op
 	}
 	if out.EncItemKey, ok = in["enc_item_key"].(string); !ok {
-		err = fmt.Errorf("expected %q to be string", "enc_item_key")
-		return
+		// return
 	}
 	if out.AuthHash, ok = in["auth_hash"].(string); !ok {
-		err = fmt.Errorf("expected %q to be string", "auth_hash")
-		return
+		// no op
 	}
 	if out.Deleted, ok = in["deleted"].(bool); !ok {
-		err = fmt.Errorf("expected %q to be bool", "deleted")
-		return
+		// no op
 	}
 	if timestamp, ok := in["created_at"].(string); !ok {
 		err = fmt.Errorf("expected %q to be string", "created_at")
 		return
 	} else if out.CreatedAt, err = time.Parse(time.RFC3339, timestamp); err != nil {
-		err = fmt.Errorf("could not parse %q; %v", "created_at", err.Error())
-		return
+		// no op
 	}
 	if timestamp, ok := in["updated_at"].(string); !ok {
 		err = fmt.Errorf("expected %q to be string", "updated_at")
 		return
 	} else if out.UpdatedAt, err = time.Parse(time.RFC3339, timestamp); err != nil {
-		err = fmt.Errorf("could not parse %q; %v", "updated_at", err.Error())
-		return
+		// no op
 	}
 	return
 }

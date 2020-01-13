@@ -19,10 +19,10 @@ import (
 type Item struct {
 	UUID        string    `json:"uuid"`
 	UserUUID    string    `json:"user_uuid"    sql:"user_uuid"`
-	Content     string    `json:"content"`
+	Content     string    `json:"content,omitempty"`
 	ContentType string    `json:"content_type" sql:"content_type"`
-	EncItemKey  string    `json:"enc_item_key" sql:"enc_item_key"`
-	AuthHash    string    `json:"auth_hash"    sql:"auth_hash"`
+	EncItemKey  string    `json:"enc_item_key,omitempty" sql:"enc_item_key"`
+	AuthHash    string    `json:"auth_hash,omitempty"    sql:"auth_hash"`
 	Deleted     bool      `json:"deleted"`
 	CreatedAt   time.Time `json:"created_at" sql:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at" sql:"updated_at"`

@@ -1,6 +1,7 @@
 package models_test
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -209,6 +210,24 @@ func TestItemDelete(t *testing.T) {
 		}
 		if !compareItems(t, loadedItem, expectedItem, false) {
 			t.Error("items not equal")
+		}
+
+		// There's a bug in the snjs client library (as of v1.0.5) that is
+		// triggered when the marshalized form of a deleted Item has an empty
+		// string value for certain keys. Tests that the keys are removed from
+		// the JSON hash altogether.
+		var jsonItem []byte
+		if jsonItem, err = json.Marshal(item); err != nil {
+			t.Fatalf("could not marshal json item; %v", err)
+		}
+		var unmarshaled map[string]interface{}
+		if err := json.Unmarshal(jsonItem, &unmarshaled); err != nil {
+			t.Fatalf("could not unmarshal json item; %v", err)
+		}
+		for _, key := range []string{"auth_hash", "content", "enc_item_key"} {
+			if _, ok := unmarshaled[key]; ok {
+				t.Errorf("key %q should be omitted for json item", key)
+			}
 		}
 	})
 
