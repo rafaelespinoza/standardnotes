@@ -1,20 +1,12 @@
-# StandardNotes Sync Server, Go Implementation
+# Standard Notes Sync Server
 
 Golang implementation of the [Standard File](https://standardfile.org/) protocol
 and backend syncing API for standardnotes.
 
 This project started out as a fork of https://github.com/tectiv3/standardfile,
-but has since been heavily rewritten and rearchitected.
-
-## Running your own server
-
-You can run your own Standard File server, and use it with any SF compatible
-client (like Standard Notes). This allows you to have 100% control of your
-data. This server implementation is built with Go and can be deployed in
-seconds.
-
-_You may require to add `/api` to the url of your server if you plan to use
-this server with https://standardnotes.org/_
+but has since been heavily rewritten and rearchitected. You can run your own
+sync server and use it with a Standard Notes client. This allows you to have
+100% control of your data.
 
 ## Getting started
 
@@ -23,103 +15,66 @@ this server with https://standardnotes.org/_
 - Go 1.12+
 - SQLite3 database
 
-#### Instructions
-
-Initialize project:
+#### Initialize project
 
 ```
 go get github.com/rafaelespinoza/standardnotes
 go install github.com/rafaelespinoza/standardnotes
 ```
 
-Start the server:
+#### Example CLI usage
 
-```
+```sh
+# Start the server in the foreground
 standardnotes api
-```
 
-Stop the server:
+# Start the server as background daemon
+standardnotes api -d
 
-```
+# Stop the background daemon
 standardnotes api -stop
 ```
 
-#### Docker instructions
-
-Create a local folder and mount it inside the container:
-
-```
-make docker-run
-```
-
-This way the data will be keep between container updates. An example docker
-compose file is included, run with `make docker-up` it will mount current dir as
-data dir.
-
-#### Run server in foreground
-
-Useful when running as systemd service.
+There is some other configuration you can specify either via a flag or a JSON
+configuration file. An options set with a CLI flag will override the same option
+in the configuration file. Read more about flags, options:
 
 ```
-standardnotes api
+standardnotes -h
+standardnotes api -h
 ```
 
-This will not daemonise the service, which might be handy if you want to handle
-that on some other level, like with init system, inside docker container, etc.
-
-To stop the service, kill the process or press `ctrl-C` if running in terminal.
-
-#### Run server as background daemon
-
-```
-standardnotes api -d
-```
-
-## Database migrations
-
-To perform migrations run `standardnotes db -migrate`
-
-## Deploying to a live server
-
-This should be behind an https-enabled location.
+## Deployment
 
 #### nginx sample config
 
+This should be behind an https-enabled location.
+
 ```
 server {
-    server_name sf.example.com;
-    listen 80;
-    return 301 https://$server_name$request_uri;
+  server_name foo.example.com;
+  listen 80;
+  return 301 https://$server_name$request_uri;
 }
 
 server {
-    server_name sf.example.com;
-    listen 443 ssl http2;
+  server_name foo.example.com;
+  listen 443 ssl http2;
 
-    ssl_certificate /etc/letsencrypt/live/sf.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/sf.example.com/privkey.pem;
+  # other SSL stuff...
 
-    include snippets/ssl-params.conf;
+  location / {
+    proxy_pass http://localhost:8888;
 
-    location / {
-      add_header Access-Control-Allow-Origin '*' always;
-      add_header Access-Control-Allow-Credentials true always;
-      add_header Access-Control-Allow-Headers 'authorization,content-type' always;
-      add_header Access-Control-Allow-Methods 'GET, POST, PUT, PATCH, DELETE, OPTIONS' always;
-      add_header Access-Control-Expose-Headers 'Access-Token, Client, UID' always;
+    add_header Access-Control-Allow-Origin 'https://app.standardnotes.org' always;
+    add_header Access-Control-Allow-Headers 'authorization,content-type' always;
+    add_header Access-Control-Allow-Methods 'GET, POST, PUT, PATCH, DELETE, OPTIONS' always;
+    add_header Access-Control-Expose-Headers 'Access-Token, Client, UID' always;
 
-      if ($request_method = OPTIONS ) {
-        return 200;
-      }
-
-      proxy_set_header        Host $host;
-      proxy_set_header        X-Real-IP $remote_addr;
-      proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_set_header        X-Forwarded-Proto $scheme;
-
-      proxy_pass          http://localhost:8888;
-      proxy_read_timeout  90;
+    if ($request_method = OPTIONS ) {
+      return 200;
     }
+  }
 }
 ```
 
