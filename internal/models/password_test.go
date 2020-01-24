@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/rafaelespinoza/standardnotes/models"
+	"github.com/rafaelespinoza/standardnotes/internal/models"
 )
 
 func TestNewPassword(t *testing.T) {

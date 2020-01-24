@@ -6,10 +6,10 @@ import (
 	"log"
 	"strings"
 
-	"github.com/rafaelespinoza/standardnotes/errs"
-	"github.com/rafaelespinoza/standardnotes/jobs"
-	"github.com/rafaelespinoza/standardnotes/logger"
-	"github.com/rafaelespinoza/standardnotes/models"
+	"github.com/rafaelespinoza/standardnotes/internal/errs"
+	"github.com/rafaelespinoza/standardnotes/internal/jobs"
+	"github.com/rafaelespinoza/standardnotes/internal/logger"
+	"github.com/rafaelespinoza/standardnotes/internal/models"
 )
 
 func MakeAuthParams(email string) (params models.PwGenParams, err error) {

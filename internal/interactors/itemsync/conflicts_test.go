@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rafaelespinoza/standardnotes/models"
+	"github.com/rafaelespinoza/standardnotes/internal/models"
 )
 
 func TestItemConflict(t *testing.T) {

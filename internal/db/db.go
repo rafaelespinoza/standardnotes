@@ -5,7 +5,7 @@ import (
 	"log"
 
 	"github.com/kisielk/sqlstruct"
-	"github.com/rafaelespinoza/standardnotes/errs"
+	"github.com/rafaelespinoza/standardnotes/internal/errs"
 
 	// initialize driver
 	_ "github.com/mattn/go-sqlite3"

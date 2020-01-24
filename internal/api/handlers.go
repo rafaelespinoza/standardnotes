@@ -6,11 +6,11 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/rafaelespinoza/standardnotes/errs"
-	"github.com/rafaelespinoza/standardnotes/interactors/itemsync"
-	userInteractors "github.com/rafaelespinoza/standardnotes/interactors/user"
-	"github.com/rafaelespinoza/standardnotes/logger"
-	"github.com/rafaelespinoza/standardnotes/models"
+	"github.com/rafaelespinoza/standardnotes/internal/errs"
+	"github.com/rafaelespinoza/standardnotes/internal/interactors/itemsync"
+	userInteractors "github.com/rafaelespinoza/standardnotes/internal/interactors/user"
+	"github.com/rafaelespinoza/standardnotes/internal/logger"
+	"github.com/rafaelespinoza/standardnotes/internal/models"
 )
 
 func sanitizeAuthError(e error) bool {

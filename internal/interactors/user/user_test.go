@@ -4,10 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rafaelespinoza/standardnotes/db"
-	"github.com/rafaelespinoza/standardnotes/errs"
-	userInteractors "github.com/rafaelespinoza/standardnotes/interactors/user"
-	"github.com/rafaelespinoza/standardnotes/models"
+	"github.com/rafaelespinoza/standardnotes/internal/db"
+	"github.com/rafaelespinoza/standardnotes/internal/errs"
+	userInteractors "github.com/rafaelespinoza/standardnotes/internal/interactors/user"
+	"github.com/rafaelespinoza/standardnotes/internal/models"
 )
 
 func init() {

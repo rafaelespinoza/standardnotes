@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/rafaelespinoza/standardnotes/models"
+	"github.com/rafaelespinoza/standardnotes/internal/models"
 )
 
 type MailerJobParams struct {

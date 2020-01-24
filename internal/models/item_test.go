@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rafaelespinoza/standardnotes/db"
-	"github.com/rafaelespinoza/standardnotes/errs"
-	"github.com/rafaelespinoza/standardnotes/models"
+	"github.com/rafaelespinoza/standardnotes/internal/db"
+	"github.com/rafaelespinoza/standardnotes/internal/errs"
+	"github.com/rafaelespinoza/standardnotes/internal/models"
 )
 
 func init() {

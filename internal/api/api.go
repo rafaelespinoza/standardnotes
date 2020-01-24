@@ -11,9 +11,9 @@ import (
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
-	"github.com/rafaelespinoza/standardnotes/config"
-	"github.com/rafaelespinoza/standardnotes/db"
-	"github.com/rafaelespinoza/standardnotes/logger"
+	"github.com/rafaelespinoza/standardnotes/internal/config"
+	"github.com/rafaelespinoza/standardnotes/internal/db"
+	"github.com/rafaelespinoza/standardnotes/internal/logger"
 	"github.com/rs/cors"
 )
 

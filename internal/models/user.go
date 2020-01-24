@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/rafaelespinoza/standardnotes/db"
-	"github.com/rafaelespinoza/standardnotes/logger"
+	"github.com/rafaelespinoza/standardnotes/internal/db"
+	"github.com/rafaelespinoza/standardnotes/internal/logger"
 )
 
 // A User is the application's end user.
