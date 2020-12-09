@@ -1,4 +1,4 @@
-version: "3"
+version: "3.7"
 services:
     api:
         image: rafaele/standardnotes:latest
@@ -16,9 +16,10 @@ services:
             interval: 5m
             timeout: 5s
             retries: 3
-            test: ["CMD", "curl", "-f", "localhost:${CONTAINER_PORT}"]
+            start_period: 10s
+            test: ["CMD-SHELL", "/usr/bin/wget -q -O /dev/null localhost:${CONTAINER_PORT} || exit 1"]
         ports:
-            - "${HOST_PORT}:${CONTAINER_PORT}"
+          - "127.0.0.1:${HOST_PORT}:${CONTAINER_PORT}"
         restart: unless-stopped
     db:
         image: mariadb:10.4
