@@ -12,27 +12,27 @@ sync server and use it with a Standard Notes client. This allows you to have
 
 #### Requirements
 
-- Go 1.12+
+- Go 1.16+
 - SQLite3 database
 
 #### Initialize project
 
 ```
-go get github.com/rafaelespinoza/standardnotes
-go install github.com/rafaelespinoza/standardnotes
+make deps
+make build
 ```
 
 #### Example CLI usage
 
 ```sh
 # Start the server in the foreground
-standardnotes api
+./bin/standardnotes api
 
 # Start the server as background daemon
-standardnotes api -d
+./bin/standardnotes api -d
 
 # Stop the background daemon
-standardnotes api -stop
+./bin/standardnotes api -stop
 ```
 
 There is some other configuration you can specify either via a flag or a JSON
@@ -40,8 +40,8 @@ configuration file. An options set with a CLI flag will override the same option
 in the configuration file. Read more about flags, options:
 
 ```
-standardnotes -h
-standardnotes api -h
+./bin/standardnotes -h
+./bin/standardnotes api -h
 ```
 
 ## Deployment
