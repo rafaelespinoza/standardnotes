@@ -8,6 +8,17 @@ but has since been heavily rewritten and rearchitected. You can run your own
 sync server and use it with a Standard Notes client. This allows you to have
 100% control of your data.
 
+## Compatibility
+
+This server should work with the "legacy" API, v20200115.
+
+However, around late May 2021 some big updates to the StandardNotes syncing
+infrastructure were introduced, including some breaking API changes. This server
+is not expected to work for those clients.
+
+If you want a golang-based StandardNotes sync server, consider trying out
+https://github.com/mdouchement/standardfile.
+
 ## Getting started
 
 #### Requirements
